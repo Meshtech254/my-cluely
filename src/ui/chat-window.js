@@ -520,21 +520,50 @@ class ChatWindowUI {
             }
             
             if (markdownLib && markdownLib.toHTML) {
-                return markdownLib.toHTML(text);
+                return this.sanitizeHtml(markdownLib.toHTML(text));
             } else {
                 logger.warn('Markdown library not available, falling back to basic formatting');
                 // Fallback to basic formatting
-                return text
+                return this.sanitizeHtml(text
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
                     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                     .replace(/\*(.+?)\*/g, '<em>$1</em>')
                     .replace(/`(.+?)`/g, '<code>$1</code>')
-                    .replace(/\n/g, '<br>');
+                    .replace(/\n/g, '<br>'));
             }
         } catch (error) {
             logger.warn('Failed to parse markdown, falling back to plain text', { error: error.message });
             // Fallback to basic formatting
-            return text.replace(/\n/g, '<br>');
+            return this.sanitizeHtml(text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>'));
         }
+    }
+
+    sanitizeHtml(html) {
+        const allowed = new Set(['A','P','BR','STRONG','B','EM','I','CODE','PRE','BLOCKQUOTE','UL','OL','LI','H1','H2','H3','H4','H5','H6','HR','TABLE','THEAD','TBODY','TR','TH','TD','DEL','S']);
+        const parsed = new DOMParser().parseFromString(String(html), 'text/html');
+        const clean = (source, target) => {
+            for (const node of Array.from(source.childNodes)) {
+                if (node.nodeType === Node.TEXT_NODE) { target.appendChild(document.createTextNode(node.nodeValue)); continue; }
+                if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                if (!allowed.has(node.tagName)) { clean(node, target); continue; }
+                const copy = document.createElement(node.tagName.toLowerCase());
+                if (node.tagName === 'A') {
+                    try {
+                        const url = new URL(node.getAttribute('href') || '', window.location.href);
+                        if (url.protocol === 'https:' || url.protocol === 'mailto:') copy.setAttribute('href', url.href);
+                        const title = node.getAttribute('title');
+                        if (title) copy.setAttribute('title', title.slice(0, 256));
+                    } catch (_) {}
+                    copy.setAttribute('rel', 'noopener noreferrer');
+                }
+                if (node.tagName === 'CODE' && /^language-[a-z0-9_+-]{1,30}$/i.test(node.className)) copy.className = node.className;
+                clean(node, copy);
+                target.appendChild(copy);
+            }
+        };
+        const wrapper = document.createElement('div');
+        clean(parsed.body, wrapper);
+        return wrapper.innerHTML;
     }
 
     showThinkingIndicator() {

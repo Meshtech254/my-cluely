@@ -483,12 +483,12 @@ class MainWindowUI {
         // Also listen via the api interface for backup
         if (window.api) {
             
-            window.api.receive('interaction-mode-changed', (interactive) => {
+            window.api.onInteractionModeChanged((interactive) => {
                 logger.debug('Interaction mode changed via api:', interactive);
                 this.handleInteractionModeChanged(interactive);
             });
             
-            window.api.receive('skill-updated', (data) => {
+            window.api.onSkillUpdated((data) => {
                 logger.info('Skill updated event received from main process:', data);
                 if (data && data.skill) {
                     this.handleSkillChanged(data);
@@ -501,7 +501,7 @@ class MainWindowUI {
             });
             
             // Listen for skill updates from settings window  
-            window.api.receive('update-skill', (skill) => {
+            window.api.onUpdateSkill((skill) => {
                 logger.info('Direct skill update received from settings:', skill);
                 this.handleSkillChanged({ skill: skill });
             });

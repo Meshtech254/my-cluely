@@ -9,7 +9,7 @@ Real-time AI help on a stealth overlay that screen sharing cannot see. Ask by vo
 <p>
   <a href="https://github.com/TechyCSR/OpenCluely/releases/latest"><img src="https://img.shields.io/github/v/release/TechyCSR/OpenCluely?style=for-the-badge&label=Latest&color=111111&labelColor=000000" alt="Latest release" /></a>
   <a href="https://github.com/TechyCSR/OpenCluely/releases"><img src="https://img.shields.io/github/downloads/TechyCSR/OpenCluely/total?style=for-the-badge&color=111111&labelColor=000000" alt="Downloads" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-111111?style=for-the-badge&labelColor=000000" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache--2.0-111111?style=for-the-badge&labelColor=000000" alt="Apache 2.0 License" /></a>
   <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20macOS%20%7C%20Linux-111111?style=for-the-badge&labelColor=000000" alt="Platforms" />
 </p>
 
@@ -75,15 +75,19 @@ If you would rather build from source, three steps are all it takes.
    ./setup.sh
    ```
 
-   The script installs Node dependencies, creates your `.env` from the example, sets up a local Whisper virtual environment, points the config at it, and launches the app.
+   On Windows PowerShell, run `./setup.ps1` instead. It installs Node dependencies,
+   creates `.env` from the example and starts the app. Local Whisper can be installed
+   from first-run onboarding.
+
+   The Bash script installs Node dependencies, creates `.env`, bootstraps local Whisper, and launches the app. The PowerShell script installs Node dependencies, creates `.env`, and launches the app; Whisper can be installed from onboarding.
 
 3. Add your Gemini key.
 
-   On first launch the Settings window opens automatically. Get a free key from [Google AI Studio](https://aistudio.google.com/) and paste it in, or edit `.env` directly. Both work, and changes are picked up without a restart.
+   On first launch the Settings window opens automatically. Get a key from [Google AI Studio](https://aistudio.google.com/) and enter it in Settings. On Windows, API credentials are encrypted with Windows credential protection; `.env` remains available for development configuration.
 
 ### Platform notes
 
-- On Windows, use Git Bash (included with Git for Windows) or WSL to run `setup.sh`.
+- Windows PowerShell users can run `./setup.ps1`; Git Bash or WSL users can run `./setup.sh`.
 - On macOS and Linux, your normal terminal works.
 - **macOS users must build from source** (steps above) — there is no pre-built `.dmg`. Because the app is unsigned, a downloaded build would be blocked by Gatekeeper as "damaged"; running from source avoids that entirely.
 - No manual `npm` commands are needed. The script handles everything.
@@ -215,13 +219,13 @@ OpenCluely is under active development. The core is stable and improvements ship
 
 ## Privacy and ethics
 
-OpenCluely collects no data and sends no telemetry. Processing happens locally, and your session stays on your device. Requests to the AI provider are encrypted in transit.
+OpenCluely sends prompts, transcripts, or screenshots to the selected AI or speech provider to provide those features. It does not send telemetry. AI-provider requests use encrypted transport; local session data and settings remain on the device.
 
 The app is built for learning and practice. You are responsible for following the rules of any interview you take and the policies of the companies involved.
 
 ## License
 
-Released under the MIT License. See [LICENSE](LICENSE) for details.
+Released under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details.
 
 ## Acknowledgments
 

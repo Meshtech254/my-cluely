@@ -3,6 +3,10 @@ const fs = require("fs");
 const { fileURLToPath } = require("url");
 const { app, BrowserWindow, globalShortcut, session, ipcMain } = require("electron");
 
+if (process.env.OPENCLUELY_DATA_DIR) {
+  app.setPath('userData', path.resolve(process.env.OPENCLUELY_DATA_DIR));
+}
+
 // ── Resolve a stable .env location ──
 // In packaged builds process.cwd() is unstable and frequently read-only
 // (NSIS install dir, AppImage mount, .app bundle), so the canonical config
@@ -32,6 +36,7 @@ function resolveEnvPath() {
 }
 const ENV_PATH = resolveEnvPath();
 require("dotenv").config({ path: ENV_PATH });
+process.env.OPENCLUELY_DATA_DIR = process.env.OPENCLUELY_DATA_DIR || app.getPath("userData");
 
 // Format a value for a single .env line. Newlines are collapsed to spaces and
 // backslashes are kept verbatim (doubling them corrupts Windows paths on the
@@ -78,6 +83,7 @@ app.commandLine.appendSwitch("no-pings");
 const logger = require("./src/core/logger").createServiceLogger("MAIN");
 const config = require("./src/core/config");
 const FirstRunManager = require("./src/core/first-run");
+const SecretStore = require("./src/core/secret-store");
 
 // ── Global crash guard ──
 // The speech path spawns external processes (Whisper CLI, and on macOS/Linux
@@ -116,6 +122,7 @@ class ApplicationController {
   // Default to C++ so language is enforced from first run
   this.codingLanguage = "cpp";
     this.speechAvailable = false;
+    this.secretStore = null;
 
     // Utterance coalescing: VAD emits a transcript per natural pause, but a
     // single spoken question can still arrive as a few fragments (mid-thought
@@ -241,6 +248,13 @@ class ApplicationController {
       this.setupPermissions();
       this.setupNetworkConfiguration();
 
+      this.secretStore = new SecretStore();
+      try {
+        this.secretStore.load();
+      } catch (error) {
+        logger.error('Could not read encrypted credentials; provider keys remain unavailable', { error: error.message });
+      }
+
       // Small delay to ensure desktop/space detection is accurate
       await new Promise((resolve) => setTimeout(resolve, 200));
 
@@ -249,6 +263,15 @@ class ApplicationController {
       let status;
       try {
         this.firstRunManager.ensureEnv();
+        if (this.secretStore && this.secretStore.isAvailable()) {
+          try {
+            this.secretStore.migrateLegacyEnv(ENV_PATH);
+          } catch (error) {
+            logger.warn('Credential migration could not complete; existing configuration will be used', { error: error.message });
+          }
+          llmService.initializeClient();
+          speechService.initializeClient();
+        }
         status = this.firstRunManager.getStatus();
         this.isFirstRun = status.needsOnboarding;
         logger.info("First-run status", status);
@@ -314,19 +337,12 @@ class ApplicationController {
       if (details.url.includes('generativelanguage.googleapis.com')) {
         const platformUA = process.platform === 'darwin'
           ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.156 Safari/537.36'
-          : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.156 Safari/537.36';
+          : process.platform === 'win32'
+            ? 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.156 Safari/537.36'
+            : 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.6261.156 Safari/537.36';
         details.requestHeaders['User-Agent'] = platformUA;
       }
       callback({ requestHeaders: details.requestHeaders });
-    });
-    
-    // Handle certificate errors for Google APIs
-    ses.setCertificateVerifyProc((request, callback) => {
-      if (request.hostname === 'generativelanguage.googleapis.com') {
-        callback(0); // Trust Google's certificates
-      } else {
-        callback(-2); // Use default verification
-      }
     });
     
     logger.debug('Network configuration applied for Gemini API');
@@ -456,12 +472,32 @@ class ApplicationController {
   }
 
   setupIPCHandlers() {
-  ipcMain.handle("take-screenshot", () => this.triggerScreenshotOCR());
-  ipcMain.handle("list-displays", () => captureService.listDisplays());
-  ipcMain.handle("capture-area", (event, options) => captureService.captureAndProcess(options));
+    const isTrustedRenderer = (event) => {
+      try {
+        const frame = event.senderFrame;
+        if (!frame || frame !== event.sender.mainFrame || !frame.url.startsWith('file://')) return false;
+        const filePath = path.resolve(fileURLToPath(frame.url));
+        const relative = path.relative(__dirname, filePath);
+        return relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+      } catch (_) {
+        return false;
+      }
+    };
+    const handle = (channel, listener) => ipcMain.handle(channel, (event, ...args) => {
+      if (!isTrustedRenderer(event)) throw new Error('Untrusted IPC sender');
+      return listener(event, ...args);
+    });
+    const on = (channel, listener) => ipcMain.on(channel, (event, ...args) => {
+      if (!isTrustedRenderer(event)) return;
+      listener(event, ...args);
+    });
+
+  handle("take-screenshot", () => this.triggerScreenshotOCR());
+  handle("list-displays", () => captureService.listDisplays());
+  handle("capture-area", (event, options) => captureService.captureAndProcess(options));
     
     // Provide reliable clipboard write via main process
-    ipcMain.handle("copy-to-clipboard", (event, text) => {
+    handle("copy-to-clipboard", (event, text) => {
       try {
         const { clipboard } = require("electron");
         clipboard.writeText(String(text ?? ""));
@@ -472,37 +508,39 @@ class ApplicationController {
       }
     });
     
-    ipcMain.handle("get-speech-availability", () => {
+    handle("get-speech-availability", () => {
       return speechService.isAvailable ? speechService.isAvailable() : false;
     });
 
-    ipcMain.handle("start-speech-recognition", () => {
+    handle("start-speech-recognition", () => {
       speechService.startRecording();
       return speechService.getStatus();
     });
 
-    ipcMain.handle("stop-speech-recognition", () => {
+    handle("stop-speech-recognition", () => {
       speechService.stopRecording();
       return speechService.getStatus();
     });
 
     // Raw PCM audio captured by the renderer's Web Audio API (Windows Whisper path)
-    ipcMain.on("audio-chunk", (_event, data) => {
-      if (data && data.buffer) {
-        speechService.handleAudioChunkFromRenderer(Buffer.from(data.buffer));
-      }
+    on("audio-chunk", (_event, data) => {
+      const chunk = data && data.buffer;
+      if (!(chunk instanceof ArrayBuffer) && !ArrayBuffer.isView(chunk)) return;
+      const audio = Buffer.from(chunk instanceof ArrayBuffer ? new Uint8Array(chunk) : chunk.buffer, chunk.byteOffset || 0, chunk.byteLength || chunk.length);
+      if (audio.length > 1024 * 1024) return;
+      speechService.handleAudioChunkFromRenderer(audio);
     });
 
     // Also handle direct send events for fallback
-    ipcMain.on("start-speech-recognition", () => {
+    on("start-speech-recognition", () => {
       speechService.startRecording();
     });
 
-    ipcMain.on("stop-speech-recognition", () => {
+    on("stop-speech-recognition", () => {
       speechService.stopRecording();
     });
 
-    ipcMain.on("chat-window-ready", () => {
+    on("chat-window-ready", () => {
       // Send a test message to confirm communication
       setTimeout(() => {
         windowManager.broadcastToAllWindows("transcription-received", {
@@ -511,7 +549,7 @@ class ApplicationController {
       }, 1000);
     });
 
-    ipcMain.on("main-window-ready", () => {
+    on("main-window-ready", () => {
       // Re-check availability whenever the main overlay finishes loading;
       // this covers first-run where the window was hidden during onboarding.
       this.speechAvailable = speechService.isAvailable
@@ -525,43 +563,43 @@ class ApplicationController {
       });
     });
 
-    ipcMain.on("test-chat-window", () => {
+    on("test-chat-window", () => {
       windowManager.broadcastToAllWindows("transcription-received", {
         text: "🧪 IMMEDIATE TEST: Chat window IPC communication test successful!",
       });
     });
 
-    ipcMain.handle("show-all-windows", () => {
+    handle("show-all-windows", () => {
       windowManager.showAllWindows();
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("hide-all-windows", () => {
+    handle("hide-all-windows", () => {
       windowManager.hideAllWindows();
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("enable-window-interaction", () => {
+    handle("enable-window-interaction", () => {
       windowManager.setInteractive(true);
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("disable-window-interaction", () => {
+    handle("disable-window-interaction", () => {
       windowManager.setInteractive(false);
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("switch-to-chat", () => {
+    handle("switch-to-chat", () => {
       windowManager.switchToWindow("chat");
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("switch-to-skills", () => {
+    handle("switch-to-skills", () => {
       windowManager.switchToWindow("skills");
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("resize-window", (event, { width, height }) => {
+    handle("resize-window", (event, { width, height }) => {
       const mainWindow = windowManager.getWindow("main");
       if (mainWindow) {
         // Enforce horizontal constraints: min ~one icon, max original width
@@ -580,7 +618,7 @@ class ApplicationController {
       return { success: true };
     });
 
-    ipcMain.handle("move-window", (event, { deltaX, deltaY }) => {
+    handle("move-window", (event, { deltaX, deltaY }) => {
       const mainWindow = windowManager.getWindow("main");
       if (mainWindow) {
         const [currentX, currentY] = mainWindow.getPosition();
@@ -597,27 +635,28 @@ class ApplicationController {
       return { success: true };
     });
 
-    ipcMain.handle("get-session-history", () => {
+    handle("get-session-history", () => {
       return sessionManager.getOptimizedHistory();
     });
 
-    ipcMain.handle("clear-session-memory", () => {
+    handle("clear-session-memory", () => {
       sessionManager.clear();
       windowManager.broadcastToAllWindows("session-cleared");
       return { success: true };
     });
 
-    ipcMain.handle("force-always-on-top", () => {
+    handle("force-always-on-top", () => {
       windowManager.forceAlwaysOnTopForAllWindows();
       return { success: true };
     });
 
-    ipcMain.handle("test-always-on-top", () => {
+    handle("test-always-on-top", () => {
       const results = windowManager.testAlwaysOnTopForAllWindows();
       return { success: true, results };
     });
 
-    ipcMain.handle("send-chat-message", async (event, text) => {
+    handle("send-chat-message", async (event, text) => {
+      if (typeof text !== 'string' || text.length > 20000) throw new Error('Invalid chat message');
       // Add chat message to session memory
       sessionManager.addUserInput(text, 'chat');
       logger.debug('Chat message added to session memory', { textLength: text.length });
@@ -632,8 +671,7 @@ class ApplicationController {
           await this.processWithLLM(text, sessionHistory);
         } catch (error) {
           logger.error("Failed to process chat message with LLM", {
-            error: error.message,
-            text: text.substring(0, 100)
+            error: error.message
           });
         }
       })();
@@ -641,7 +679,7 @@ class ApplicationController {
       return { success: true };
     });
 
-    ipcMain.handle("get-skill-prompt", (event, skillName) => {
+    handle("get-skill-prompt", (event, skillName) => {
       try {
         const { promptLoader } = require('./prompt-loader');
         const skillPrompt = promptLoader.getSkillPrompt(skillName);
@@ -652,46 +690,53 @@ class ApplicationController {
       }
     });
 
-    ipcMain.handle("set-gemini-api-key", (event, apiKey) => {
-      llmService.updateApiKey(apiKey);
-      return llmService.getStats();
+    handle("set-gemini-api-key", (event, apiKey) => {
+      if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 512) {
+        return { success: false, error: 'Invalid API key' };
+      }
+      const key = apiKey.trim();
+      if (!this.secretStore || !this.secretStore.set('GEMINI_API_KEY', key)) {
+        this.persistEnvUpdates({ GEMINI_API_KEY: key });
+      }
+      llmService.updateApiKey(key);
+      return { success: llmService.isInitialized, ...llmService.getStats() };
     });
 
-    ipcMain.handle("get-gemini-status", () => {
+    handle("get-gemini-status", () => {
       return llmService.getStats();
     });
 
     // Window binding IPC handlers
-    ipcMain.handle("set-window-binding", (event, enabled) => {
+    handle("set-window-binding", (event, enabled) => {
       return windowManager.setWindowBinding(enabled);
     });
 
-    ipcMain.handle("toggle-window-binding", () => {
+    handle("toggle-window-binding", () => {
       return windowManager.toggleWindowBinding();
     });
 
-    ipcMain.handle("get-window-binding-status", () => {
+    handle("get-window-binding-status", () => {
       return windowManager.getWindowBindingStatus();
     });
 
-    ipcMain.handle("get-window-stats", () => {
+    handle("get-window-stats", () => {
       return windowManager.getWindowStats();
     });
 
-    ipcMain.handle("set-window-gap", (event, gap) => {
+    handle("set-window-gap", (event, gap) => {
       return windowManager.setWindowGap(gap);
     });
 
-    ipcMain.handle("move-bound-windows", (event, { deltaX, deltaY }) => {
+    handle("move-bound-windows", (event, { deltaX, deltaY }) => {
       windowManager.moveBoundWindows(deltaX, deltaY);
       return windowManager.getWindowBindingStatus();
     });
 
-    ipcMain.handle("test-gemini-connection", async () => {
+    handle("test-gemini-connection", async () => {
       return await llmService.testConnection();
     });
 
-    ipcMain.handle("run-gemini-diagnostics", async () => {
+    handle("run-gemini-diagnostics", async () => {
       try {
         const connectivity = await llmService.checkNetworkConnectivity();
         const apiTest = await llmService.testConnection();
@@ -712,7 +757,7 @@ class ApplicationController {
     });
 
     // Settings handlers
-    ipcMain.handle("show-settings", () => {
+    handle("show-settings", () => {
       windowManager.showSettings();
 
       // Send current settings to the settings window
@@ -727,13 +772,13 @@ class ApplicationController {
       return { success: true };
     });
 
-    ipcMain.handle("get-settings", () => {
+    handle("get-settings", () => {
       return this.getSettings();
     });
 
     // First-run onboarding status — renderer can query to know whether
     // to show the welcome banner / prompt for API-key entry.
-    ipcMain.handle("get-first-run-status", () => {
+    handle("get-first-run-status", () => {
       try {
         return this.firstRunManager.getStatus();
       } catch (e) {
@@ -742,7 +787,7 @@ class ApplicationController {
       }
     });
 
-    ipcMain.handle("complete-first-run", async () => {
+    handle("complete-first-run", async () => {
       try {
         this.firstRunManager.markCompleted();
         this.isFirstRun = false;
@@ -770,22 +815,23 @@ class ApplicationController {
 
     // Open a URL in the system browser (used by the GitHub star button
     // in onboarding).
-    ipcMain.handle("open-external", async (_event, url) => {
+    handle("open-external", async (_event, url) => {
       try {
-        if (typeof url !== "string" || !/^https?:\/\//i.test(url)) {
+        const external = new URL(typeof url === 'string' ? url : '');
+        if (external.protocol !== 'https:' || external.username || external.password) {
           return { ok: false, error: "Invalid URL" };
         }
         const { shell } = require("electron");
-        await shell.openExternal(url);
+        await shell.openExternal(external.href);
         return { ok: true };
       } catch (e) {
-        logger.warn("Failed to open external URL", { url, error: e.message });
+        logger.warn("Failed to open external URL", { error: e.message });
         return { ok: false, error: e.message };
       }
     });
 
     // Close the onboarding wizard window.
-    ipcMain.handle("close-onboarding", () => {
+    handle("close-onboarding", () => {
       try {
         windowManager.closeOnboarding();
         return { success: true };
@@ -795,7 +841,7 @@ class ApplicationController {
     });
 
     // Detect an installed Whisper CLI across common locations.
-    ipcMain.handle("detect-whisper", async () => {
+    handle("detect-whisper", async () => {
       try {
         const installer = this.getWhisperInstaller();
         return await installer.detect();
@@ -807,7 +853,7 @@ class ApplicationController {
 
     // Install Whisper. Streams progress lines back via `webContents.send`
     // so the renderer can paint them as they arrive.
-    ipcMain.handle("install-whisper", async (event) => {
+    handle("install-whisper", async (event) => {
       try {
         const installer = this.getWhisperInstaller();
         const sender = event.sender;
@@ -824,7 +870,7 @@ class ApplicationController {
     });
 
     // Download Whisper model. Streams progress lines back via `webContents.send`
-    ipcMain.handle("download-whisper-model", async (event, modelName) => {
+    handle("download-whisper-model", async (event, modelName) => {
       try {
         const installer = this.getWhisperInstaller();
         const sender = event.sender;
@@ -840,28 +886,28 @@ class ApplicationController {
       }
     });
 
-    ipcMain.handle("save-settings", (event, settings) => {
+    handle("save-settings", (event, settings) => {
       return this.saveSettings(settings);
     });
 
-    ipcMain.handle("update-app-icon", (event, iconKey) => {
+    handle("update-app-icon", (event, iconKey) => {
       return this.updateAppIcon(iconKey);
     });
 
-    ipcMain.handle("update-active-skill", (event, skill) => {
+    handle("update-active-skill", (event, skill) => {
       this.activeSkill = skill;
       windowManager.broadcastToAllWindows("skill-changed", { skill });
       return { success: true };
     });
 
-    ipcMain.handle("restart-app-for-stealth", () => {
+    handle("restart-app-for-stealth", () => {
       // Force restart the app to ensure stealth name changes take effect
       const { app } = require("electron");
       app.relaunch();
       app.exit();
     });
 
-    ipcMain.handle("close-window", (event) => {
+    handle("close-window", (event) => {
       const webContents = event.sender;
       const window = windowManager.windows.forEach((win, type) => {
         if (win.webContents === webContents) {
@@ -873,18 +919,18 @@ class ApplicationController {
     });
 
     // LLM window specific handlers
-    ipcMain.handle("expand-llm-window", (event, contentMetrics) => {
+    handle("expand-llm-window", (event, contentMetrics) => {
       windowManager.expandLLMWindow(contentMetrics);
       return { success: true, contentMetrics };
     });
 
-    ipcMain.handle("resize-llm-window-for-content", (event, contentMetrics) => {
+    handle("resize-llm-window-for-content", (event, contentMetrics) => {
       // Use the same expansion logic for now, can be enhanced later
       windowManager.expandLLMWindow(contentMetrics);
       return { success: true, contentMetrics };
     });
 
-    ipcMain.handle("quit-app", () => {
+    handle("quit-app", () => {
       logger.info("Quit app requested via IPC");
       try {
         // Force quit the application
@@ -910,7 +956,7 @@ class ApplicationController {
     });
 
     // Handle close settings
-    ipcMain.on("close-settings", () => {
+    on("close-settings", () => {
       const settingsWindow = windowManager.getWindow("settings");
       if (settingsWindow) {
         settingsWindow.hide();
@@ -918,18 +964,18 @@ class ApplicationController {
     });
 
     // Handle save settings (synchronous)
-    ipcMain.on("save-settings", (event, settings) => {
+    on("save-settings", (event, settings) => {
       this.saveSettings(settings);
     });
 
     // Handle update skill
-    ipcMain.on("update-skill", (event, skill) => {
+    on("update-skill", (event, skill) => {
       this.activeSkill = skill;
       windowManager.broadcastToAllWindows("skill-updated", { skill });
     });
 
     // Handle quit app (alternative method)
-    ipcMain.on("quit-app", () => {
+    on("quit-app", () => {
       logger.info("Quit app requested via IPC (on method)");
       try {
         const { app } = require("electron");
@@ -1183,7 +1229,6 @@ class ApplicationController {
         skill: this.activeSkill,
         programmingLanguage: needsProgrammingLanguage ? this.codingLanguage : 'not applicable',
         processingTime: llmResult.metadata.processingTime,
-        responsePreview: llmResult.response.substring(0, 200) + "...",
       });
 
       // Add LLM response to session memory
@@ -1280,8 +1325,7 @@ class ApplicationController {
       await this.processTranscriptionWithLLM(combined, sessionHistory);
     } catch (error) {
       logger.error("Failed to process transcription with LLM", {
-        error: error.message,
-        text: combined.substring(0, 100)
+        error: error.message
       });
     } finally {
       this._utteranceDispatchInFlight = false;
@@ -1310,15 +1354,14 @@ class ApplicationController {
       const cleanText = text.trim();
       if (cleanText.length < 2) {
         logger.debug("Skipping LLM processing for very short transcription", {
-          text: cleanText
+          textLength: cleanText.length
         });
         return;
       }
 
       logger.info("Processing transcription with intelligent LLM response", {
         skill: this.activeSkill,
-        textLength: cleanText.length,
-        textPreview: cleanText.substring(0, 100) + "..."
+        textLength: cleanText.length
       });
 
       // Check if current skill needs programming language context
@@ -1380,8 +1423,7 @@ class ApplicationController {
       logger.error("Transcription LLM processing failed", {
         error: error.message,
         errorStack: error.stack,
-        skill: this.activeSkill,
-        text: text ? text.substring(0, 100) : 'undefined'
+        skill: this.activeSkill
       });
 
       // Try to provide a fallback response
@@ -1458,7 +1500,6 @@ class ApplicationController {
       responseLength: llmResult.response.length,
       skill: this.activeSkill,
       dataKeys: Object.keys(broadcastData),
-      responsePreview: llmResult.response.substring(0, 100) + "...",
     });
 
     windowManager.broadcastToAllWindows("llm-response", broadcastData);
@@ -1482,8 +1523,7 @@ class ApplicationController {
 
     logger.info("Broadcasting transcription LLM response to all windows", {
       responseLength: llmResult.response.length,
-      skill: this.activeSkill,
-      responsePreview: llmResult.response.substring(0, 100) + "..."
+      skill: this.activeSkill
     });
 
     windowManager.broadcastToAllWindows("transcription-llm-response", broadcastData);
@@ -1596,7 +1636,7 @@ class ApplicationController {
       windowGap: windowManager.windowGap,
 
       speechProvider: speechService.provider || "whisper",
-      azureKey: process.env.AZURE_SPEECH_KEY || "",
+      azureKey: "",
       azureRegion: process.env.AZURE_SPEECH_REGION || "",
       whisperCommand: process.env.WHISPER_COMMAND || "",
       whisperModel: process.env.WHISPER_MODEL || "small",
@@ -1606,7 +1646,8 @@ class ApplicationController {
         (process.env.WHISPER_MANUAL_CAPTURE === "true" ? "manual" : "vad"),
       whisperResponseTarget: process.env.WHISPER_RESPONSE_TARGET || "both",
       whisperSegmentMs: process.env.WHISPER_SEGMENT_MS || "4000",
-      geminiKey: process.env.GEMINI_API_KEY || "",
+      geminiKey: "",
+      geminiConfigured: !!process.env.GEMINI_API_KEY,
 
       azureConfigured: !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION,
       speechAvailable: this.speechAvailable
@@ -1648,8 +1689,11 @@ class ApplicationController {
       if (settings.speechProvider === "azure" || settings.speechProvider === "whisper") {
         envUpdates.SPEECH_PROVIDER = settings.speechProvider;
       }
-      if (settings.azureKey !== undefined) {
-        envUpdates.AZURE_SPEECH_KEY = settings.azureKey;
+      const azureKeyUpdated = typeof settings.azureKey === 'string' && !!settings.azureKey.trim();
+      if (azureKeyUpdated) {
+        if (!this.secretStore || !this.secretStore.set('AZURE_SPEECH_KEY', settings.azureKey.trim())) {
+          envUpdates.AZURE_SPEECH_KEY = settings.azureKey.trim();
+        }
       }
       if (settings.azureRegion !== undefined) {
         envUpdates.AZURE_SPEECH_REGION = settings.azureRegion;
@@ -1675,8 +1719,10 @@ class ApplicationController {
       if (settings.whisperSegmentMs !== undefined) {
         envUpdates.WHISPER_SEGMENT_MS = String(settings.whisperSegmentMs);
       }
-      if (settings.geminiKey !== undefined) {
-        envUpdates.GEMINI_API_KEY = settings.geminiKey;
+      if (typeof settings.geminiKey === 'string' && settings.geminiKey.trim()) {
+        if (!this.secretStore || !this.secretStore.set('GEMINI_API_KEY', settings.geminiKey.trim())) {
+          envUpdates.GEMINI_API_KEY = settings.geminiKey.trim();
+        }
       }
 
       // Capture the previous whisper command BEFORE persisting — persistEnvUpdates
@@ -1692,7 +1738,7 @@ class ApplicationController {
       // connection button in the onboarding wizard fails with
       // "Service not initialized" because the client was first created
       // at app startup, before any key was set.
-      if (settings.geminiKey !== undefined && envUpdates.GEMINI_API_KEY !== undefined) {
+      if (typeof settings.geminiKey === 'string' && settings.geminiKey.trim()) {
         try {
           llmService.initializeClient();
           logger.info("LLM service reinitialized after Gemini key update");
@@ -1712,7 +1758,7 @@ class ApplicationController {
       const providerChanged = settings.speechProvider && speechService.provider !== settings.speechProvider;
       const whisperCommandChanged = settings.whisperCommand !== undefined &&
         prevWhisperCommand !== String(settings.whisperCommand || '');
-      if (providerChanged || whisperCommandChanged) {
+      if (providerChanged || whisperCommandChanged || azureKeyUpdated) {
         try {
           speechService.initializeClient();
           this.speechAvailable = speechService.isAvailable
@@ -1739,10 +1785,7 @@ class ApplicationController {
         }
       }
 
-      logger.info("Settings saved successfully", {
-        ...settings,
-        persistedEnvKeys: persistedKeys
-      });
+      logger.info("Settings saved successfully", { persistedEnvKeys: persistedKeys });
       return { success: true, persistedEnvKeys: persistedKeys };
     } catch (error) {
       logger.error("Failed to save settings", { error: error.message });

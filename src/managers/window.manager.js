@@ -1,5 +1,6 @@
 const { BrowserWindow, screen, desktopCapturer, shell } = require('electron');
 const path = require('path');
+const { fileURLToPath } = require('url');
 const logger = require('../core/logger').createServiceLogger('WINDOW');
 const config = require('../core/config');
 
@@ -278,8 +279,9 @@ class WindowManager {
         ...config.get('window.webPreferences'),
         nodeIntegration: false,
         contextIsolation: true,
+        sandbox: true,
         backgroundThrottling: false,
-        devTools: true, // Enable DevTools for debugging
+        devTools: !require('electron').app.isPackaged,
       },
       show: false, // Never show during creation, use showOnCurrentDesktop instead
       title: windowConfig.title,
@@ -451,16 +453,27 @@ class WindowManager {
     // Deny any in-app window.open and hand http(s) URLs to the OS browser, and
     // block the current window from navigating away to an external site.
     window.webContents.setWindowOpenHandler(({ url }) => {
-      if (/^https?:\/\//i.test(url)) {
-        shell.openExternal(url);
-      }
+      try {
+        const external = new URL(url);
+        if (external.protocol === 'https:' && !external.username && !external.password) {
+          shell.openExternal(external.href);
+        }
+      } catch (_) {}
       return { action: 'deny' };
     });
     window.webContents.on('will-navigate', (event, url) => {
-      if (/^https?:\/\//i.test(url) && url !== window.webContents.getURL()) {
-        event.preventDefault();
-        shell.openExternal(url);
-      }
+      let sameLocalFile = false;
+      try {
+        const next = fileURLToPath(url);
+        const current = fileURLToPath(window.webContents.getURL());
+        sameLocalFile = path.resolve(next) === path.resolve(current);
+      } catch (_) {}
+      if (sameLocalFile) return;
+      event.preventDefault();
+      try {
+        const external = new URL(url);
+        if (external.protocol === 'https:' && !external.username && !external.password) shell.openExternal(external.href);
+      } catch (_) {}
     });
 
   // Load the HTML file

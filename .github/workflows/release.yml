@@ -46,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Check JavaScript syntax
+        run: npm run check:syntax
+
       # electron-builder reads `version` from package.json for artifact
       # naming (e.g. OpenCluely-1.0.0-x64.dmg). When we build from a
       # git tag (v1.0.7) the package.json still says 1.0.0 by default,

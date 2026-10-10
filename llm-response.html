@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob:; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OpenCluely</title>
@@ -603,15 +604,43 @@
         }
 
         function renderMarkdown(text) {
+            let html;
             if (typeof marked !== 'undefined') {
-                return marked.parse ? marked.parse(text) : marked(text);
+                html = marked.parse ? marked.parse(text) : marked(text);
+            } else if (typeof markdown !== 'undefined' && typeof markdown.toHTML === 'function') {
+                html = markdown.toHTML(text);
+            } else {
+                html = escapeHtml(text).replace(/\n/g, '<br>');
             }
+            return sanitizeHtml(html);
+        }
 
-            if (typeof markdown !== 'undefined' && typeof markdown.toHTML === 'function') {
-                return markdown.toHTML(text);
-            }
-
-            return escapeHtml(text).replace(/\n/g, '<br>');
+        function sanitizeHtml(html) {
+            const allowed = new Set(['A','P','BR','STRONG','B','EM','I','CODE','PRE','BLOCKQUOTE','UL','OL','LI','H1','H2','H3','H4','H5','H6','HR','TABLE','THEAD','TBODY','TR','TH','TD','DEL','S']);
+            const parsed = new DOMParser().parseFromString(String(html), 'text/html');
+            const clean = (source, target) => {
+                for (const node of Array.from(source.childNodes)) {
+                    if (node.nodeType === Node.TEXT_NODE) { target.appendChild(document.createTextNode(node.nodeValue)); continue; }
+                    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+                    if (!allowed.has(node.tagName)) { clean(node, target); continue; }
+                    const copy = document.createElement(node.tagName.toLowerCase());
+                    if (node.tagName === 'A') {
+                        try {
+                            const url = new URL(node.getAttribute('href') || '', window.location.href);
+                            if (url.protocol === 'https:' || url.protocol === 'mailto:') copy.setAttribute('href', url.href);
+                            const title = node.getAttribute('title');
+                            if (title) copy.setAttribute('title', title.slice(0, 256));
+                        } catch (_) {}
+                        copy.setAttribute('rel', 'noopener noreferrer');
+                    }
+                    if (node.tagName === 'CODE' && /^language-[a-z0-9_+-]{1,30}$/i.test(node.className)) copy.className = node.className;
+                    clean(node, copy);
+                    target.appendChild(copy);
+                }
+            };
+            const wrapper = document.createElement('div');
+            clean(parsed.body, wrapper);
+            return wrapper.innerHTML;
         }
 
         function calculateContentMetrics(response, codeBlocks) {
@@ -1025,8 +1054,8 @@
                     try {
                         if (window.electronAPI && window.electronAPI.closeWindow) {
                             window.electronAPI.closeWindow();
-                        } else if (window.api && window.api.send) {
-                            window.api.send('quit-app');
+                        } else if (window.api && window.api.quit) {
+                            window.api.quit();
                         } else {
                             window.close();
                         }

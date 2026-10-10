@@ -1167,7 +1167,9 @@ class SpeechService extends EventEmitter {
       retryCount: this.retryCount,
       effectiveSettings: {
         speechProvider: this.provider,
-        azureKey: this._getSetting('azureKey') || '',
+        azureKey: '',
+        azureConfigured: !!(this._getSetting('azureKey') || process.env.AZURE_SPEECH_KEY) &&
+          !!(this._getSetting('azureRegion') || process.env.AZURE_SPEECH_REGION),
         azureRegion: this._getSetting('azureRegion') || process.env.AZURE_SPEECH_REGION || '',
         whisperCommand: this._getSetting('whisperCommand') || process.env.WHISPER_COMMAND || '',
         whisperModelDir: this._getWhisperModelDir(),
@@ -1836,7 +1838,7 @@ class SpeechService extends EventEmitter {
       if (clean && !this._isHallucinatedTranscript(clean)) {
         this.emit('transcription', clean);
       } else if (clean) {
-        logger.debug('Dropped likely Whisper silence hallucination', { transcript: clean });
+        logger.debug('Dropped likely Whisper silence hallucination', { transcriptLength: clean.length });
       }
     } finally {
       this.transcriptionInFlight = false;

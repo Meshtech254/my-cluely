@@ -4,7 +4,7 @@ const os = require('os');
 class ConfigManager {
   constructor() {
     this.env = process.env.NODE_ENV || 'development';
-    this.appDataDir = path.join(os.homedir(), '.OpenCluely');
+    this.appDataDir = process.env.OPENCLUELY_DATA_DIR || path.join(os.homedir(), '.OpenCluely');
     this.loadConfiguration();
   }
 
@@ -27,6 +27,7 @@ class ConfigManager {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
+          sandbox: true,
           enableRemoteModule: false,
           preload: path.join(__dirname, '../../preload.js')
         }

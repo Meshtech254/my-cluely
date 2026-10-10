@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Close button handler
     if (closeButton) {
         closeButton.addEventListener('click', () => {
-            window.api.send('close-settings');
+            window.api.closeSettings();
         });
     }
 
@@ -51,8 +51,8 @@ document.addEventListener('DOMContentLoaded', () => {
         quitButton.addEventListener('click', () => {
             try {
                 // Try multiple ways to quit the app
-                if (window.api && window.api.send) {
-                    window.api.send('quit-app');
+                if (window.api && window.api.quit) {
+                    window.api.quit();
                 }
                 
                 // Also try the electron API if available
@@ -78,7 +78,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Always set the input value, even if empty, so the user sees what's
         // currently configured (including env-derived defaults). Previously
         // empty strings were skipped which left stale UI values.
-        if (azureKeyInput) azureKeyInput.value = settings.azureKey || '';
+        if (azureKeyInput) {
+            azureKeyInput.value = settings.azureKey || '';
+            azureKeyInput.placeholder = settings.azureConfigured
+                ? 'Saved securely — leave blank to keep current key'
+                : 'Enter your Azure key';
+        }
         if (azureRegionInput) azureRegionInput.value = settings.azureRegion || '';
         if (whisperCommandInput) whisperCommandInput.value = settings.whisperCommand || '';
         if (whisperModelInput) whisperModelInput.value = settings.whisperModel || '';
@@ -87,7 +92,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (whisperCaptureModeSelect) whisperCaptureModeSelect.value = settings.whisperCaptureMode || 'vad';
         if (whisperResponseTargetSelect) whisperResponseTargetSelect.value = settings.whisperResponseTarget || 'both';
         if (whisperSegmentMsInput) whisperSegmentMsInput.value = settings.whisperSegmentMs || '';
-        if (geminiKeyInput) geminiKeyInput.value = settings.geminiKey || '';
+        if (geminiKeyInput) {
+            geminiKeyInput.value = settings.geminiKey || '';
+            geminiKeyInput.placeholder = settings.geminiConfigured
+                ? 'Saved securely — leave blank to keep current key'
+                : 'Enter your Google API key';
+        }
         if (windowGapInput) windowGapInput.value = settings.windowGap || '';
 
         // Set C++ as default if no coding language is specified
@@ -114,13 +124,13 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Load settings when window opens
-    window.api.receive('load-settings', (settings) => {
+    window.api.onLoadSettings((settings) => {
         loadSettingsIntoUI(settings);
     });
 
     // Listen for settings window shown event
-    if (window.electronAPI && window.electronAPI.receive) {
-        window.electronAPI.receive('settings-window-shown', () => {
+    if (window.electronAPI && window.electronAPI.onSettingsWindowShown) {
+        window.electronAPI.onSettingsWindowShown(() => {
             requestCurrentSettings();
         });
 
@@ -151,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (codingLanguageSelect) settings.codingLanguage = codingLanguageSelect.value;
         if (activeSkillSelect) settings.activeSkill = activeSkillSelect.value;
         
-        window.api.send('save-settings', settings);
+        window.api.saveSettings(settings);
     };
 
     const updateSpeechFieldStates = () => {
@@ -232,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         activeSkillSelect.addEventListener('change', (e) => {
             saveSettings();
             // Also update the main window
-            window.api.send('update-skill', e.target.value);
+            window.api.updateSkill(e.target.value);
         });
     }
 
@@ -306,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 iconElement.classList.add('selected');
                 
                 // Save the selection - this should trigger the app icon change
-                window.api.send('save-settings', { selectedIcon: icon.key });
+                window.api.saveSettings({ selectedIcon: icon.key });
                 
                 // Show visual feedback
                 iconElement.style.transform = 'scale(0.95)';
@@ -330,7 +340,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ESC key to close
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
-            window.api.send('close-settings');
+            window.api.closeSettings();
         }
     });
 }); 

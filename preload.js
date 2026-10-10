@@ -1,5 +1,12 @@
 const { contextBridge, ipcRenderer } = require('electron')
 
+const subscribe = (channel, callback) => {
+  if (typeof callback !== 'function') return () => {};
+  const listener = (_event, ...args) => callback(undefined, ...args);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+};
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -50,13 +57,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   detectWhisper: () => ipcRenderer.invoke('detect-whisper'),
   installWhisper: () => ipcRenderer.invoke('install-whisper'),
   downloadWhisperModel: (modelName) => ipcRenderer.invoke('download-whisper-model', modelName),
-  onInstallProgress: (callback) => {
-    const wrapped = (_event, line) => {
-      try { callback(line); } catch (e) { console.error('onInstallProgress error:', e); }
-    };
-    ipcRenderer.on('install-progress', wrapped);
-    return () => ipcRenderer.removeListener('install-progress', wrapped);
-  },
+  onInstallProgress: (callback) => subscribe('install-progress', (_event, line) => callback(line)),
   updateAppIcon: (iconKey) => ipcRenderer.invoke('update-app-icon', iconKey),
   updateActiveSkill: (skill) => ipcRenderer.invoke('update-active-skill', skill),
   restartAppForStealth: () => ipcRenderer.invoke('restart-app-for-stealth'),
@@ -95,66 +96,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
   captureArea: (options) => ipcRenderer.invoke('capture-area', options),
   
   // Event listeners
-  onTranscriptionReceived: (callback) => ipcRenderer.on('transcription-received', callback),
-  onInterimTranscription: (callback) => ipcRenderer.on('interim-transcription', callback),
-  onSpeechStatus: (callback) => ipcRenderer.on('speech-status', callback),
-  onSpeechError: (callback) => ipcRenderer.on('speech-error', callback),
-  onSpeechAvailability: (callback) => ipcRenderer.on('speech-availability', callback),
-  onSessionEvent: (callback) => ipcRenderer.on('session-event', callback),
-  onSessionCleared: (callback) => ipcRenderer.on('session-cleared', callback),
-  onOcrCompleted: (callback) => ipcRenderer.on('ocr-completed', callback),
-  onOcrError: (callback) => ipcRenderer.on('ocr-error', callback),
-  onLlmResponse: (callback) => ipcRenderer.on('llm-response', callback),
-  onLlmError: (callback) => ipcRenderer.on('llm-error', callback),
-  onTranscriptionLlmResponse: (callback) => ipcRenderer.on('transcription-llm-response', callback),
-  onTranscriptionLlmResponseStart: (callback) => ipcRenderer.on('transcription-llm-response-start', callback),
-  onTranscriptionLlmResponseChunk: (callback) => ipcRenderer.on('transcription-llm-response-chunk', callback),
-  onOpenGeminiConfig: (callback) => ipcRenderer.on('open-gemini-config', callback),
-  onDisplayLlmResponse: (callback) => ipcRenderer.on('display-llm-response', callback),
-  onShowLoading: (callback) => ipcRenderer.on('show-loading', callback),
-  onSkillChanged: (callback) => ipcRenderer.on('skill-changed', callback),
-  onInteractionModeChanged: (callback) => ipcRenderer.on('interaction-mode-changed', callback),
-  onRecordingStarted: (callback) => ipcRenderer.on('recording-started', callback),
-  onRecordingStopped: (callback) => ipcRenderer.on('recording-stopped', callback),
-  onCodingLanguageChanged: (callback) => ipcRenderer.on('coding-language-changed', callback),
-  onMainWindowShown: (callback) => ipcRenderer.on('main-window-shown', callback),
-  
-  // Generic receive method
-  receive: (channel, callback) => ipcRenderer.on(channel, callback),
-  
-  // Remove listeners
-  removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel)
+  onTranscriptionReceived: (callback) => subscribe('transcription-received', callback),
+  onInterimTranscription: (callback) => subscribe('interim-transcription', callback),
+  onSpeechStatus: (callback) => subscribe('speech-status', callback),
+  onSpeechError: (callback) => subscribe('speech-error', callback),
+  onSpeechAvailability: (callback) => subscribe('speech-availability', callback),
+  onSessionEvent: (callback) => subscribe('session-event', callback),
+  onSessionCleared: (callback) => subscribe('session-cleared', callback),
+  onOcrCompleted: (callback) => subscribe('ocr-completed', callback),
+  onOcrError: (callback) => subscribe('ocr-error', callback),
+  onLlmResponse: (callback) => subscribe('llm-response', callback),
+  onLlmError: (callback) => subscribe('llm-error', callback),
+  onTranscriptionLlmResponse: (callback) => subscribe('transcription-llm-response', callback),
+  onTranscriptionLlmResponseStart: (callback) => subscribe('transcription-llm-response-start', callback),
+  onTranscriptionLlmResponseChunk: (callback) => subscribe('transcription-llm-response-chunk', callback),
+  onOpenGeminiConfig: (callback) => subscribe('open-gemini-config', callback),
+  onDisplayLlmResponse: (callback) => subscribe('display-llm-response', callback),
+  onShowLoading: (callback) => subscribe('show-loading', callback),
+  onSkillChanged: (callback) => subscribe('skill-changed', callback),
+  onInteractionModeChanged: (callback) => subscribe('interaction-mode-changed', callback),
+  onRecordingStarted: (callback) => subscribe('recording-started', callback),
+  onRecordingStopped: (callback) => subscribe('recording-stopped', callback),
+  onCodingLanguageChanged: (callback) => subscribe('coding-language-changed', callback),
+  onMainWindowShown: (callback) => subscribe('main-window-shown', callback),
+  onSettingsWindowShown: (callback) => subscribe('settings-window-shown', callback)
 })
 
 contextBridge.exposeInMainWorld('api', {
-    send: (channel, data) => {
-        let validChannels = [
-            'close-settings',
-            'quit-app',
-            'save-settings',
-            'toggle-recording',
-            'toggle-interaction-mode',
-            'update-skill',
-            'window-loaded'
-        ];
-        if (validChannels.includes(channel)) {
-            ipcRenderer.send(channel, data);
-        } else {
-            console.warn('Invalid IPC channel:', channel);
-        }
-    },
-    receive: (channel, func) => {
-        let validChannels = [
-            'load-settings',
-            'recording-state-changed',
-            'interaction-mode-changed',
-            'skill-updated',
-            'update-skill',
-            'recording-started',
-            'recording-stopped'
-        ];
-        if (validChannels.includes(channel)) {
-            ipcRenderer.on(channel, (event, ...args) => func(...args));
-        }
-    }
+    closeSettings: () => ipcRenderer.send('close-settings'),
+    quit: () => ipcRenderer.send('quit-app'),
+    saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+    updateSkill: (skill) => ipcRenderer.send('update-skill', skill),
+    onLoadSettings: (callback) => subscribe('load-settings', (_event, settings) => callback(settings)),
+    onInteractionModeChanged: (callback) => subscribe('interaction-mode-changed', (_event, value) => callback(value)),
+    onSkillUpdated: (callback) => subscribe('skill-updated', (_event, value) => callback(value)),
+    onUpdateSkill: (callback) => subscribe('update-skill', (_event, value) => callback(value))
 });

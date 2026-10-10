@@ -31,7 +31,7 @@ class FirstRunManager {
     if (!fs.existsSync(this.sentinelPath)) return true;
     if (!fs.existsSync(this.envPath)) return true;
     const content = this._readEnv();
-    const gemini = (content.GEMINI_API_KEY || '').trim();
+    const gemini = (process.env.GEMINI_API_KEY || content.GEMINI_API_KEY || '').trim();
     return !gemini || gemini === 'your_gemini_api_key_here';
   }
 
@@ -79,12 +79,13 @@ class FirstRunManager {
    */
   getStatus() {
     const env = this._readEnv();
-    const gemini = (env.GEMINI_API_KEY || '').trim();
+    const gemini = (process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
     return {
       envExists: fs.existsSync(this.envPath),
       sentinelExists: fs.existsSync(this.sentinelPath),
       geminiConfigured: !!gemini && gemini !== 'your_gemini_api_key_here',
-      azureConfigured: !!(env.AZURE_SPEECH_KEY || '').trim() && !!(env.AZURE_SPEECH_REGION || '').trim(),
+      azureConfigured: !!(process.env.AZURE_SPEECH_KEY || env.AZURE_SPEECH_KEY || '').trim() &&
+        !!(process.env.AZURE_SPEECH_REGION || env.AZURE_SPEECH_REGION || '').trim(),
       whisperConfigured: !!(env.WHISPER_COMMAND || '').trim(),
       needsOnboarding: this.needsOnboarding()
     };

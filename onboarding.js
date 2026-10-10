@@ -277,9 +277,10 @@
     // `installWhisper()` only returns once install completes; live
     // output comes through `onInstallProgress` events.
     let progressHandler = null;
+    let removeProgressListener = null;
     if (window.electronAPI && window.electronAPI.onInstallProgress) {
       progressHandler = (line) => appendLog(line);
-      window.electronAPI.onInstallProgress(progressHandler);
+      removeProgressListener = window.electronAPI.onInstallProgress(progressHandler);
     }
 
     try {
@@ -314,9 +315,7 @@
         btn.innerHTML = btn.dataset.originalHtml || '<i class="fas fa-download"></i> Install Whisper now';
       }
     } finally {
-      if (progressHandler && window.electronAPI.removeAllListeners) {
-        try { window.electronAPI.removeAllListeners('install-progress'); } catch (_) { /* ignore */ }
-      }
+      if (removeProgressListener) removeProgressListener();
     }
   }
 
@@ -416,9 +415,10 @@
     appendModelLog('Starting model download…');
 
     let progressHandler = null;
+    let removeProgressListener = null;
     if (window.electronAPI && window.electronAPI.onInstallProgress) {
       progressHandler = (line) => appendModelLog(line);
-      window.electronAPI.onInstallProgress(progressHandler);
+      removeProgressListener = window.electronAPI.onInstallProgress(progressHandler);
     }
 
     try {
@@ -441,9 +441,7 @@
       appendModelLog(`\n! Error: ${e.message || e}`);
       nextBtn.disabled = false;
     } finally {
-      if (progressHandler && window.electronAPI.removeAllListeners) {
-        try { window.electronAPI.removeAllListeners('install-progress'); } catch (_) { /* ignore */ }
-      }
+      if (removeProgressListener) removeProgressListener();
     }
   }
 
