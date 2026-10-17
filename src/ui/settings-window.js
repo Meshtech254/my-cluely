@@ -17,9 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const whisperResponseTargetSelect = document.getElementById('whisperResponseTarget');
     const whisperSegmentMsInput = document.getElementById('whisperSegmentMs');
     const geminiKeyInput = document.getElementById('geminiKey');
+    const llmProviderSelect = document.getElementById('llmProvider');
+    const openaiKeyInput = document.getElementById('openaiKey');
+    const openaiModelInput = document.getElementById('openaiModel');
     const windowGapInput = document.getElementById('windowGap');
     const codingLanguageSelect = document.getElementById('codingLanguage');
     const activeSkillSelect = document.getElementById('activeSkill');
+    const translateScreenInput = document.getElementById('translateScreen');
     const iconGrid = document.getElementById('iconGrid');
 
     // Check if window.api exists
@@ -86,9 +90,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (azureRegionInput) azureRegionInput.value = settings.azureRegion || '';
         if (whisperCommandInput) whisperCommandInput.value = settings.whisperCommand || '';
-        if (whisperModelInput) whisperModelInput.value = settings.whisperModel || '';
+        if (whisperModelInput) whisperModelInput.value = settings.whisperModel || 'base';
         if (whisperLanguageInput) whisperLanguageInput.value = settings.whisperLanguage || '';
-        if (whisperDeviceSelect) whisperDeviceSelect.value = settings.whisperDevice || 'auto';
+        if (whisperDeviceSelect) whisperDeviceSelect.value = settings.whisperDevice || 'cpu';
         if (whisperCaptureModeSelect) whisperCaptureModeSelect.value = settings.whisperCaptureMode || 'vad';
         if (whisperResponseTargetSelect) whisperResponseTargetSelect.value = settings.whisperResponseTarget || 'both';
         if (whisperSegmentMsInput) whisperSegmentMsInput.value = settings.whisperSegmentMs || '';
@@ -98,6 +102,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 ? 'Saved securely — leave blank to keep current key'
                 : 'Enter your Google API key';
         }
+        if (llmProviderSelect) llmProviderSelect.value = settings.llmProvider || 'gemini';
+        if (openaiKeyInput) {
+            openaiKeyInput.value = '';
+            openaiKeyInput.placeholder = settings.openaiConfigured ? 'Saved securely — leave blank to keep current key' : 'Enter your OpenAI API key';
+        }
+        if (openaiModelInput) openaiModelInput.value = settings.openaiModel || 'gpt-4o-mini';
         if (windowGapInput) windowGapInput.value = settings.windowGap || '';
 
         // Set C++ as default if no coding language is specified
@@ -106,6 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (settings.activeSkill && activeSkillSelect) activeSkillSelect.value = settings.activeSkill;
+        if (translateScreenInput) translateScreenInput.checked = settings.translateScreen === true;
 
         // Handle icon selection
         const selectedIcon = settings.selectedIcon || settings.appIcon;
@@ -157,9 +168,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (whisperResponseTargetSelect) settings.whisperResponseTarget = whisperResponseTargetSelect.value;
         if (whisperSegmentMsInput) settings.whisperSegmentMs = whisperSegmentMsInput.value;
         if (geminiKeyInput) settings.geminiKey = geminiKeyInput.value;
+        if (llmProviderSelect) settings.llmProvider = llmProviderSelect.value;
+        if (openaiKeyInput) settings.openaiKey = openaiKeyInput.value;
+        if (openaiModelInput) settings.openaiModel = openaiModelInput.value;
         if (windowGapInput) settings.windowGap = windowGapInput.value;
         if (codingLanguageSelect) settings.codingLanguage = codingLanguageSelect.value;
         if (activeSkillSelect) settings.activeSkill = activeSkillSelect.value;
+        if (translateScreenInput) settings.translateScreen = translateScreenInput.checked;
         
         window.api.saveSettings(settings);
     };
@@ -206,8 +221,12 @@ document.addEventListener('DOMContentLoaded', () => {
         whisperResponseTargetSelect,
         whisperSegmentMsInput,
         geminiKeyInput,
+        openaiKeyInput,
+        openaiModelInput,
         windowGapInput
     ];
+
+    if (llmProviderSelect) llmProviderSelect.addEventListener('change', saveSettings);
 
     inputs.forEach(input => {
         if (input) {
@@ -245,6 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.api.updateSkill(e.target.value);
         });
     }
+    if (translateScreenInput) translateScreenInput.addEventListener('change', saveSettings);
 
     updateSpeechFieldStates();
 
@@ -328,6 +348,79 @@ document.addEventListener('DOMContentLoaded', () => {
             iconGrid.appendChild(iconElement);
         });
     };
+
+    const knowledgeSources = document.getElementById('knowledgeSources');
+    const knowledgeStatus = document.getElementById('knowledgeStatus');
+    const knowledgeMode = document.getElementById('knowledgeMode');
+    const prioritizeCv = document.getElementById('prioritizeCv');
+    const knowledgeMaxChunks = document.getElementById('knowledgeMaxChunks');
+    const knowledgeMaxChars = document.getElementById('knowledgeMaxChars');
+    const setKnowledgeStatus = (message) => { if (knowledgeStatus) knowledgeStatus.textContent = message || ''; };
+    const loadKnowledge = async () => {
+        if (!window.electronAPI?.knowledgeList || !knowledgeSources) return;
+        try {
+            const result = await window.electronAPI.knowledgeList();
+            if (knowledgeMode) knowledgeMode.value = result.options.mode;
+            if (prioritizeCv) prioritizeCv.checked = !!result.options.prioritizeCv;
+            if (knowledgeMaxChunks) knowledgeMaxChunks.value = result.options.maxChunks || 4;
+            if (knowledgeMaxChars) knowledgeMaxChars.value = result.options.maxChars || 6000;
+            knowledgeSources.replaceChildren();
+            for (const source of result.sources) {
+                const row = document.createElement('div'); row.className = 'settings-item';
+                const info = document.createElement('div'); info.className = 'settings-stack';
+                const name = document.createElement('div'); name.className = 'settings-item-label'; name.textContent = source.name;
+                const detail = document.createElement('div'); detail.className = 'settings-item-description';
+                detail.textContent = `${source.type} · ${new Date(source.addedAt).toLocaleDateString()} · ${source.status}${source.origin ? ` · ${source.origin}` : ''}`;
+                info.append(name, detail);
+                const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = !!source.enabled; enabled.title = 'Use this source';
+                enabled.addEventListener('change', async () => { await window.electronAPI.knowledgeSetEnabled(source.id, enabled.checked); });
+                row.append(info, enabled);
+                const view = document.createElement('button'); view.className = 'btn'; view.textContent = 'View';
+                view.addEventListener('click', async () => {
+                    const content = await window.electronAPI.knowledgeRead(source.id);
+                    if (!content) return;
+                    document.getElementById('knowledgeViewerTitle').textContent = content.name;
+                    document.getElementById('knowledgeViewerText').textContent = content.text;
+                    document.getElementById('knowledgeViewer').showModal();
+                });
+                row.appendChild(view);
+                if (source.type === 'website') {
+                    const refresh = document.createElement('button'); refresh.className = 'btn'; refresh.textContent = 'Refresh';
+                    refresh.addEventListener('click', async () => { try { await window.electronAPI.knowledgeRefresh(source.id); setKnowledgeStatus('Website refreshed.'); await loadKnowledge(); } catch (e) { setKnowledgeStatus(e.message); } });
+                    row.appendChild(refresh);
+                }
+                const remove = document.createElement('button'); remove.className = 'btn btn-danger'; remove.textContent = 'Delete';
+                remove.addEventListener('click', async () => { await window.electronAPI.knowledgeDelete(source.id); setKnowledgeStatus('Source deleted.'); await loadKnowledge(); });
+                row.appendChild(remove); knowledgeSources.appendChild(row);
+            }
+        } catch (error) { setKnowledgeStatus(error.message || 'Could not load local sources.'); }
+    };
+
+    document.getElementById('knowledgeAddFiles')?.addEventListener('click', async () => {
+        try {
+            const result = await window.electronAPI.knowledgeAddFiles();
+            const errors = result.errors || [];
+            setKnowledgeStatus(errors.length ? errors.map((item) => `${item.name}: ${item.error}`).join(' · ') : `${result.added.length} source(s) added.`);
+            await loadKnowledge();
+        } catch (error) { setKnowledgeStatus(error.message); }
+    });
+    document.getElementById('knowledgeAddUrl')?.addEventListener('click', async () => {
+        const url = window.prompt('Enter a public HTTPS website URL:');
+        if (!url) return;
+        try { await window.electronAPI.knowledgeAddUrl(url); setKnowledgeStatus('Website indexed.'); await loadKnowledge(); }
+        catch (error) { setKnowledgeStatus(error.message || 'Website could not be indexed.'); }
+    });
+    const saveKnowledgeOptions = async () => {
+        try { await window.electronAPI.knowledgeOptions({ mode: knowledgeMode?.value, prioritizeCv: prioritizeCv?.checked, maxChunks: Number(knowledgeMaxChunks?.value), maxChars: Number(knowledgeMaxChars?.value) }); }
+        catch (error) { setKnowledgeStatus(error.message); }
+    };
+    knowledgeMode?.addEventListener('change', saveKnowledgeOptions);
+    prioritizeCv?.addEventListener('change', saveKnowledgeOptions);
+    knowledgeMaxChunks?.addEventListener('change', saveKnowledgeOptions);
+    knowledgeMaxChars?.addEventListener('change', saveKnowledgeOptions);
+    if (window.electronAPI?.onSettingsWindowShown) window.electronAPI.onSettingsWindowShown(loadKnowledge);
+    loadKnowledge();
+    document.getElementById('knowledgeViewerClose')?.addEventListener('click', () => document.getElementById('knowledgeViewer').close());
 
     // Initialize icon grid
     initializeIconGrid();

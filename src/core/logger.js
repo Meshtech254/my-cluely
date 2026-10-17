@@ -7,7 +7,7 @@ const config = require('./config');
 function redact(value, key = '') {
   if (/(api.?key|azure.?key|secret|token|password|credential)/i.test(key)) return '[REDACTED]';
   if (typeof value === 'string') {
-    return [process.env.GEMINI_API_KEY, process.env.AZURE_SPEECH_KEY]
+    return [process.env.GEMINI_API_KEY, process.env.OPENAI_API_KEY, process.env.AZURE_SPEECH_KEY]
       .filter((secret) => typeof secret === 'string' && secret.length >= 8)
       .reduce((text, secret) => text.split(secret).join('[REDACTED]'), value);
   }

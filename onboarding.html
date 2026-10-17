@@ -741,10 +741,12 @@
 
             <!-- SCREEN 2: API Key -->
             <section class="screen" data-screen="apikey">
-                <h1>Connect Google Gemini</h1>
+                <h1>Connect an AI Provider</h1>
                 <p class="subtitle">
-                    OpenCluely uses Google's Gemini to generate answers. You'll need a free API key.
+                    Choose Gemini or OpenAI. Your key is stored locally using Windows secure storage.
                 </p>
+
+                <div class="field"><label for="llmProvider">AI provider</label><select id="llmProvider" class="input"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select></div>
 
                 <div class="field">
                     <label for="geminiKey">Gemini API Key</label>
@@ -773,6 +775,11 @@
                         <i class="fas fa-circle-info"></i>
                         <span class="text">Enter your key above</span>
                     </div>
+                </div>
+                <div class="field">
+                    <label for="openaiKey">OpenAI API Key (optional)</label>
+                    <input type="password" id="openaiKey" class="input" placeholder="sk-…" autocomplete="off" spellcheck="false">
+                    <div class="hint">Enter a key here and choose OpenAI above, or configure credentials later in Settings.</div>
                 </div>
 
             </section>
@@ -886,7 +893,7 @@
                             <div class="choice-text">
                                 <div class="choice-title">Download Now</div>
                                 <div class="choice-desc">
-                                    Download the <code>turbo</code> model (~150 MB) now so it's ready when you need it. Recommended.
+                                    Download the <code>base</code> model (~142 MB) now so it's ready when you need it. Recommended.
                                 </div>
                             </div>
                             <div class="choice-radio"></div>
@@ -958,7 +965,7 @@
         <!-- ── Footer ── -->
         <div class="footer">
             <div class="dev">
-                Built by <a href="https://techycsr.dev" target="_blank" rel="noreferrer"><strong>@TechyCSR</strong></a>
+                Built by <a href="https://github.com/Meshtech254" target="_blank" rel="noreferrer"><strong>@Meshtech254</strong></a>
                 <span style="opacity:0.5; margin: 0 8px;">·</span>
                 <a href="https://github.com/TechyCSR/OpenCluely" target="_blank" rel="noreferrer">
                     <i class="fab fa-github"></i> GitHub

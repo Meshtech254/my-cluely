@@ -7,6 +7,7 @@
     "start": "node scripts/launch-electron.js",
     "dev": "node scripts/launch-electron.js --disable-gpu",
     "check:syntax": "node scripts/check-syntax.js",
+    "test": "node test/run.js",
     "test-speech": "node scripts/test-speech.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
@@ -21,9 +22,8 @@
     "postinstall": "electron-builder install-app-deps"
   },
   "author": {
-    "name": "TechyCSR",
-    "email": "info@techycsr.dev",
-    "url": "https://techycsr.dev"
+    "name": "Meshtech254",
+    "url": "https://github.com/Meshtech254"
   },
   "repository": {
     "type": "git",

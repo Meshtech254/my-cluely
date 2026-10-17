@@ -236,6 +236,6 @@ Released under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_N
 
 <div align="center">
 
-Built by [TechyCSR](https://techycsr.dev). If OpenCluely helped you, consider giving it a star ⭐
+Built by [Meshtech254](https://github.com/Meshtech254). If OpenCluely helped you, consider giving it a star ⭐
 
 </div>

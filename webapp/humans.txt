@@ -6,9 +6,9 @@
 
 # TEAM
 
-  Developer & maintainer: TechyCSR
-  Site: https://techycsr.dev
-  GitHub: https://github.com/TechyCSR
+  Developer & maintainer: Meshtech254
+  Site: https://github.com/Meshtech254
+  GitHub: https://github.com/Meshtech254
 
 # SITE
 

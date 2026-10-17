@@ -3,7 +3,7 @@ const path = require('path');
 const { app, safeStorage } = require('electron');
 const dotenv = require('dotenv');
 
-const SECRET_KEYS = ['GEMINI_API_KEY', 'AZURE_SPEECH_KEY'];
+const SECRET_KEYS = ['GEMINI_API_KEY', 'OPENAI_API_KEY', 'AZURE_SPEECH_KEY'];
 
 class SecretStore {
   constructor() {

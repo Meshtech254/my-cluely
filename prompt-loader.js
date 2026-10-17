@@ -6,7 +6,7 @@ class PromptLoader {
     this.prompts = new Map();
     this.promptsLoaded = false;
     this.skillPromptSent = new Set();
-    // Focus only on DSA
+    // Only specialized coding mode requires a programming language
     this.skillsRequiringProgrammingLanguage = ['dsa'];
   }
 
@@ -28,7 +28,7 @@ class PromptLoader {
       for (const file of files) {
         if (file.endsWith('.md')) {
           const skillName = path.basename(file, '.md');
-          if (skillName !== 'dsa') continue; // only keep DSA
+          if (!['general', 'dsa'].includes(skillName)) continue;
           const filePath = path.join(promptsDir, file);
           const promptContent = fs.readFileSync(filePath, 'utf8');
           
@@ -368,7 +368,7 @@ STRICT REQUIREMENTS:
     if (!this.promptsLoaded) {
       this.loadPrompts();
     }
-    return ['dsa'];
+    return ['general', 'dsa'];
   }
 
   /**

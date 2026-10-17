@@ -113,16 +113,19 @@ const llmService = require("./src/services/llm.service");
 // Managers
 const windowManager = require("./src/managers/window.manager");
 const sessionManager = require("./src/managers/session.manager");
+const KnowledgeBase = require("./src/core/knowledge-base");
 
 class ApplicationController {
   constructor() {
     this.isReady = false;
     this.starting = false;
-    this.activeSkill = "dsa";
+    this.activeSkill = "general";
+    this.translateScreen = process.env.SCREEN_TRANSLATION_MODE === "true";
   // Default to C++ so language is enforced from first run
   this.codingLanguage = "cpp";
     this.speechAvailable = false;
     this.secretStore = null;
+    this.knowledgeBase = new KnowledgeBase(app.getPath('userData'));
 
     // Utterance coalescing: VAD emits a transcript per natural pause, but a
     // single spoken question can still arrive as a few fragments (mid-thought
@@ -679,6 +682,32 @@ class ApplicationController {
       return { success: true };
     });
 
+    handle('knowledge-list', () => ({ sources: this.knowledgeBase.list(), options: this.knowledgeBase.getOptions() }));
+    handle('knowledge-read', (_event, id) => this.knowledgeBase.read(id));
+    handle('knowledge-add-files', async (event) => {
+      const { dialog, BrowserWindow } = require('electron');
+      const parent = BrowserWindow.fromWebContents(event.sender);
+      const result = await dialog.showOpenDialog(parent || undefined, {
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Documents', extensions: ['pdf', 'docx', 'txt', 'md', 'markdown'] }]
+      });
+      if (result.canceled) return { added: [], errors: [] };
+      const added = [], errors = [];
+      for (const filePath of result.filePaths) {
+        try { added.push(this.knowledgeBase.addFile(filePath)); }
+        catch (error) { errors.push({ name: path.basename(filePath), error: error.message }); }
+      }
+      return { added, errors };
+    });
+    handle('knowledge-add-url', async (_event, url) => {
+      if (typeof url !== 'string' || url.length > 2048) throw new Error('Invalid website URL.');
+      return this.knowledgeBase.addUrl(url);
+    });
+    handle('knowledge-set-enabled', (_event, id, enabled) => this.knowledgeBase.setEnabled(id, enabled));
+    handle('knowledge-delete', (_event, id) => this.knowledgeBase.delete(id));
+    handle('knowledge-refresh', (_event, id) => this.knowledgeBase.refresh(id));
+    handle('knowledge-options', (_event, options) => this.knowledgeBase.setOptions(options || {}));
+
     handle("get-skill-prompt", (event, skillName) => {
       try {
         const { promptLoader } = require('./prompt-loader');
@@ -695,11 +724,27 @@ class ApplicationController {
         return { success: false, error: 'Invalid API key' };
       }
       const key = apiKey.trim();
+      if (process.platform === 'win32' && (!this.secretStore || !this.secretStore.isAvailable())) {
+        return { success: false, error: 'Windows secure credential storage is unavailable; the API key was not saved.' };
+      }
       if (!this.secretStore || !this.secretStore.set('GEMINI_API_KEY', key)) {
         this.persistEnvUpdates({ GEMINI_API_KEY: key });
       }
+      this.persistEnvUpdates({ LLM_PROVIDER: 'gemini' });
       llmService.updateApiKey(key);
       return { success: llmService.isInitialized, ...llmService.getStats() };
+    });
+
+    handle("set-openai-api-key", (event, apiKey) => {
+      if (typeof apiKey !== 'string' || !apiKey.trim() || apiKey.length > 512) return { success: false, error: 'Invalid API key' };
+      const key = apiKey.trim();
+      if (process.platform === 'win32' && (!this.secretStore || !this.secretStore.isAvailable())) {
+        return { success: false, error: 'Windows secure credential storage is unavailable; the API key was not saved.' };
+      }
+      if (!this.secretStore || !this.secretStore.set('OPENAI_API_KEY', key)) this.persistEnvUpdates({ OPENAI_API_KEY: key });
+      this.persistEnvUpdates({ LLM_PROVIDER: 'openai' });
+      llmService.updateOpenAIKey(key);
+      return { success: llmService.isInitialized, provider: 'openai' };
     });
 
     handle("get-gemini-status", () => {
@@ -874,7 +919,7 @@ class ApplicationController {
       try {
         const installer = this.getWhisperInstaller();
         const sender = event.sender;
-        const result = await installer.downloadModel(modelName || 'small', {
+        const result = await installer.downloadModel(modelName || 'base', {
           onProgress: (line) => {
             try { sender.send("install-progress", line); } catch (_) { /* ignore */ }
           },
@@ -1075,6 +1120,7 @@ class ApplicationController {
 
   navigateSkill(direction) {
     const availableSkills = [
+      "general",
       "dsa",
     ];
 
@@ -1154,7 +1200,9 @@ class ApplicationController {
             messageId,
             delta
           });
-        }
+        },
+        this.translateScreen,
+        this.knowledgeBase.context('', { includeCv: true }).text
       );
       llmResult.metadata = { ...llmResult.metadata, messageId };
 
@@ -1195,6 +1243,7 @@ class ApplicationController {
 
   async processWithLLM(text, sessionHistory) {
     try {
+      const knowledge = this.knowledgeBase.context(text);
       // Add user input to session memory
       sessionManager.addUserInput(text, 'llm_input');
 
@@ -1220,7 +1269,8 @@ class ApplicationController {
             messageId,
             delta
           });
-        }
+        },
+        knowledge.text
       );
       llmResult.metadata = { ...llmResult.metadata, messageId };
 
@@ -1390,7 +1440,8 @@ class ApplicationController {
             messageId,
             delta
           });
-        }
+        },
+        this.knowledgeBase.context(cleanText).text
       );
       llmResult.metadata = { ...llmResult.metadata, messageId };
 
@@ -1630,7 +1681,8 @@ class ApplicationController {
     // distinguish "unset" from "stale value from a previous load".
     return {
       codingLanguage: this.codingLanguage || "cpp",
-      activeSkill: this.activeSkill || "dsa",
+      activeSkill: this.activeSkill || "general",
+      translateScreen: this.translateScreen,
       appIcon: this.appIcon || "terminal",
       selectedIcon: this.appIcon || "terminal",
       windowGap: windowManager.windowGap,
@@ -1639,15 +1691,19 @@ class ApplicationController {
       azureKey: "",
       azureRegion: process.env.AZURE_SPEECH_REGION || "",
       whisperCommand: process.env.WHISPER_COMMAND || "",
-      whisperModel: process.env.WHISPER_MODEL || "small",
+      whisperModel: process.env.WHISPER_MODEL || "base",
       whisperLanguage: process.env.WHISPER_LANGUAGE || "auto",
-      whisperDevice: process.env.WHISPER_DEVICE || "auto",
+      whisperDevice: process.env.WHISPER_DEVICE || "cpu",
       whisperCaptureMode: process.env.WHISPER_CAPTURE_MODE ||
         (process.env.WHISPER_MANUAL_CAPTURE === "true" ? "manual" : "vad"),
       whisperResponseTarget: process.env.WHISPER_RESPONSE_TARGET || "both",
       whisperSegmentMs: process.env.WHISPER_SEGMENT_MS || "4000",
       geminiKey: "",
       geminiConfigured: !!process.env.GEMINI_API_KEY,
+      llmProvider: process.env.LLM_PROVIDER || 'gemini',
+      openaiKey: "",
+      openaiConfigured: !!process.env.OPENAI_API_KEY,
+      openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
 
       azureConfigured: !!process.env.AZURE_SPEECH_KEY && !!process.env.AZURE_SPEECH_REGION,
       speechAvailable: this.speechAvailable
@@ -1656,6 +1712,10 @@ class ApplicationController {
 
   saveSettings(settings) {
     try {
+      if (process.platform === 'win32' && (settings.geminiKey?.trim() || settings.openaiKey?.trim() || settings.azureKey?.trim()) &&
+          (!this.secretStore || !this.secretStore.isAvailable())) {
+        return { success: false, error: 'Windows secure credential storage is unavailable; no API key was saved.' };
+      }
       // ── In-memory updates + window broadcasts ──
       if (settings.codingLanguage) {
         this.codingLanguage = settings.codingLanguage;
@@ -1668,6 +1728,9 @@ class ApplicationController {
         windowManager.broadcastToAllWindows("skill-updated", {
           skill: settings.activeSkill,
         });
+      }
+      if (typeof settings.translateScreen === "boolean") {
+        this.translateScreen = settings.translateScreen;
       }
       if (settings.appIcon) {
         this.appIcon = settings.appIcon;
@@ -1686,9 +1749,13 @@ class ApplicationController {
       // Writing to .env ensures they survive app restarts and are picked
       // up the next time the app boots.
       const envUpdates = {};
+      if (typeof settings.translateScreen === "boolean") {
+        envUpdates.SCREEN_TRANSLATION_MODE = String(settings.translateScreen);
+      }
       if (settings.speechProvider === "azure" || settings.speechProvider === "whisper") {
         envUpdates.SPEECH_PROVIDER = settings.speechProvider;
       }
+      if (settings.llmProvider === 'gemini' || settings.llmProvider === 'openai') envUpdates.LLM_PROVIDER = settings.llmProvider;
       const azureKeyUpdated = typeof settings.azureKey === 'string' && !!settings.azureKey.trim();
       if (azureKeyUpdated) {
         if (!this.secretStore || !this.secretStore.set('AZURE_SPEECH_KEY', settings.azureKey.trim())) {
@@ -1724,6 +1791,10 @@ class ApplicationController {
           envUpdates.GEMINI_API_KEY = settings.geminiKey.trim();
         }
       }
+      if (typeof settings.openaiKey === 'string' && settings.openaiKey.trim()) {
+        if (!this.secretStore || !this.secretStore.set('OPENAI_API_KEY', settings.openaiKey.trim())) envUpdates.OPENAI_API_KEY = settings.openaiKey.trim();
+      }
+      if (settings.openaiModel && /^[a-zA-Z0-9._-]{1,80}$/.test(settings.openaiModel)) envUpdates.OPENAI_MODEL = settings.openaiModel;
 
       // Capture the previous whisper command BEFORE persisting — persistEnvUpdates
       // mutates process.env in place, so comparing afterwards would always read
@@ -1747,6 +1818,10 @@ class ApplicationController {
             error: e.message
           });
         }
+      }
+      if ((typeof settings.openaiKey === 'string' && settings.openaiKey.trim()) || settings.llmProvider) {
+        try { llmService.initializeClient(); }
+        catch (e) { logger.warn('Failed to reinitialize LLM service after provider update', { error: e.message }); }
       }
 
       // Reinitialize speech service when provider OR whisper command

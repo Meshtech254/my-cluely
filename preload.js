@@ -40,6 +40,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Gemini LLM configuration
   setGeminiApiKey: (apiKey) => ipcRenderer.invoke('set-gemini-api-key', apiKey),
+  setOpenAIApiKey: (apiKey) => ipcRenderer.invoke('set-openai-api-key', apiKey),
   getGeminiStatus: () => ipcRenderer.invoke('get-gemini-status'),
   testGeminiConnection: () => ipcRenderer.invoke('test-gemini-connection'),
   
@@ -48,6 +49,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   hideSettings: () => ipcRenderer.invoke('hide-settings'),
   getSettings: () => ipcRenderer.invoke('get-settings'),
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
+  knowledgeList: () => ipcRenderer.invoke('knowledge-list'),
+  knowledgeRead: (id) => ipcRenderer.invoke('knowledge-read', id),
+  knowledgeAddFiles: () => ipcRenderer.invoke('knowledge-add-files'),
+  knowledgeAddUrl: (url) => ipcRenderer.invoke('knowledge-add-url', url),
+  knowledgeSetEnabled: (id, enabled) => ipcRenderer.invoke('knowledge-set-enabled', id, enabled),
+  knowledgeDelete: (id) => ipcRenderer.invoke('knowledge-delete', id),
+  knowledgeRefresh: (id) => ipcRenderer.invoke('knowledge-refresh', id),
+  knowledgeOptions: (options) => ipcRenderer.invoke('knowledge-options', options),
 
   // First-run onboarding
   getFirstRunStatus: () => ipcRenderer.invoke('get-first-run-status'),

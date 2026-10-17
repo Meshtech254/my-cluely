@@ -10,7 +10,7 @@ class MainWindowUI {
     constructor() {
         this.isInteractive = false;
         this.isHidden = false;
-        this.currentSkill = 'dsa'; // Default, will be updated from settings
+        this.currentSkill = 'general'; // Default, will be updated from settings
         this.statusDot = null;
         this.skillIndicator = null;
         this.micButton = null;
@@ -25,6 +25,7 @@ class MainWindowUI {
         
         // Define available skills for navigation
         this.availableSkills = [
+            'general',
             'dsa'
         ];
         
@@ -288,10 +289,11 @@ class MainWindowUI {
             }
         });
 
-        // Skill indicator click handler toggles DSA skill
+        // Cycle between general assistance and specialized DSA mode
         this.skillIndicator.addEventListener('click', () => {
             if (!this.isInteractive) return;
-            const newSkill = 'dsa';
+            const nextIndex = (this.availableSkills.indexOf(this.currentSkill) + 1) % this.availableSkills.length;
+            const newSkill = this.availableSkills[nextIndex];
             if (window.electronAPI && window.electronAPI.updateActiveSkill) {
                 window.electronAPI.updateActiveSkill(newSkill).then(() => {
                     this.handleSkillActivated(newSkill);
@@ -433,6 +435,13 @@ class MainWindowUI {
                 this.handleRecordingStopped();
             });
 
+            window.electronAPI.onSpeechError((event, data) => {
+                const message = data?.error || 'Speech recognition failed. Check microphone permissions and audio input device.';
+                this.handleRecordingStopped();
+                logger.error('Speech recognition error', { component: 'MainWindowUI', error: message });
+                this.showNotification(message, 'error');
+            });
+
             window.electronAPI.onSkillChanged((event, data) => {
                 if (data && data.skill) {
                     this.handleSkillChanged(data);
@@ -519,6 +528,7 @@ class MainWindowUI {
     handleLLMResponse(data) {
         const skill = data.skill || data.metadata?.skill || 'General';
         const skillNames = {
+            'general': 'Assistant',
             'dsa': 'DSA',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',
@@ -718,10 +728,16 @@ class MainWindowUI {
 
             logger.info('Renderer audio capture started', { component: 'MainWindowUI' });
         } catch (error) {
+            const reason = error?.name === 'NotAllowedError'
+                ? 'Microphone access is blocked. Allow microphone access for OpenCluely in Windows Privacy settings.'
+                : error?.name === 'NotFoundError'
+                    ? 'No microphone is available. Connect or enable an audio input device.'
+                    : `Could not start microphone capture: ${error.message || 'audio device unavailable'}`;
             logger.error('Failed to start renderer audio capture', {
                 component: 'MainWindowUI',
-                error: error.message
+                error: reason
             });
+            this.showNotification(reason, 'error');
             // Notify main process so it can stop the recording state
             try {
                 await window.electronAPI.stopSpeechRecognition();
@@ -758,6 +774,7 @@ class MainWindowUI {
 
     updateSkillIndicator() {
         const skillNames = {
+            'general': 'Assistant',
             'dsa': 'DSA',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',
@@ -871,6 +888,7 @@ class MainWindowUI {
 
     showSkillChangeNotification(skill, direction) {
         const skillNames = {
+            'general': 'Assistant',
             'dsa': 'DSA',
             'behavioral': 'Behavioral', 
             'sales': 'Sales',

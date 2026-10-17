@@ -44,6 +44,8 @@
     step: 0,
     geminiKey: '',
     geminiConfigured: false, // a key already exists in .env from a prior run
+    openaiConfigured: false,
+    openaiKey: '',
     speechProvider: null, // 'whisper' | 'azure' | 'skip'
     azureKey: '',
     azureRegion: '',
@@ -136,7 +138,7 @@
         return true;
       case 'apikey':
         // A key already in .env is enough — don't force a re-entry.
-        return !!state.geminiKey.trim() || state.geminiConfigured;
+        return !!state.geminiKey.trim() || state.geminiConfigured || !!state.openaiKey.trim() || state.openaiConfigured;
       case 'speech':
         if (state.speechProvider === 'azure') {
           return !!state.azureKey.trim() && !!state.azureRegion.trim();
@@ -156,6 +158,8 @@
 
   // ── Wire up: API key ──────────────────────────────────────────────
   const geminiInput = $('#geminiKey');
+  const openaiInput = $('#openaiKey');
+  const providerInput = $('#llmProvider');
   const toggleVis = $('#toggleVis');
   const keyStatus = $('#keyStatus');
 
@@ -186,6 +190,8 @@
       setKeyStatus('idle', 'Key entered');
     }
   });
+
+  openaiInput?.addEventListener('input', () => { state.openaiKey = openaiInput.value.trim(); });
 
   toggleVis.addEventListener('click', () => {
     const showing = geminiInput.type === 'text';
@@ -331,7 +337,7 @@
           'Python 3.10+ must be on PATH (download from python.org if missing).',
           'A new <code>.venv-whisper\\</code> folder will be created in the app directory.',
           'Whisper will be installed into that venv (pip download, no admin rights needed).',
-          'First transcription downloads the <code>small</code> model (~461 MB).',
+          'First transcription downloads the <code>base</code> model (~142 MB).',
         ],
       },
       darwin: {
@@ -340,7 +346,7 @@
           'Uses your existing Python 3 (install via Homebrew if missing).',
           'A new <code>.venv-whisper/</code> folder is created in the app data directory.',
           'Whisper installs into that venv — no <code>sudo</code> required.',
-          'First transcription downloads the <code>small</code> model (~461 MB).',
+          'First transcription downloads the <code>base</code> model (~142 MB).',
         ],
       },
       other: {
@@ -349,7 +355,7 @@
           'Uses your system Python 3 (needs <code>python3-venv</code> on Debian/Ubuntu).',
           'A new <code>.venv-whisper/</code> folder is created in the app data directory.',
           'Whisper installs into that venv — avoids the externally-managed-environment error.',
-          'First transcription downloads the <code>small</code> model (~461 MB).',
+          'First transcription downloads the <code>base</code> model (~142 MB).',
         ],
       },
     };
@@ -422,7 +428,7 @@
     }
 
     try {
-      const r = await window.electronAPI.downloadWhisperModel('small');
+      const r = await window.electronAPI.downloadWhisperModel('base');
       state.modelDownloading = false;
       if (r.ok) {
         state.modelDownloaded = true;
@@ -512,16 +518,20 @@
     const name = currentScreenName();
     if (!canAdvance()) {
       // Lightly nudge the user
-      if (name === 'apikey') setKeyStatus('error', 'Enter a Gemini API key');
+      if (name === 'apikey') setKeyStatus('error', 'Enter a Gemini or OpenAI API key');
       return;
     }
 
     // Persist settings on speech selection (Azure path), since we
     // already saved geminiKey on test; do it here too if user skipped
     // testing.
-    if (name === 'apikey' && state.geminiKey && window.electronAPI) {
+    if (name === 'apikey' && window.electronAPI && (state.geminiKey || state.openaiKey || providerInput)) {
       try {
-        await window.electronAPI.saveSettings({ geminiKey: state.geminiKey });
+        await window.electronAPI.saveSettings({
+          ...(state.geminiKey ? { geminiKey: state.geminiKey } : {}),
+          ...(state.openaiKey ? { openaiKey: state.openaiKey } : {}),
+          llmProvider: providerInput?.value || 'gemini'
+        });
       } catch (_) { /* surfaced elsewhere */ }
     }
     if (name === 'speech' && window.electronAPI) {
@@ -664,6 +674,11 @@
         state.geminiConfigured = true;
         setKeyStatus('success', 'Already configured — click Continue');
         geminiInput.placeholder = '•••••••••••••••• (already set)';
+      }
+      if (s?.openaiConfigured) {
+        state.openaiConfigured = true;
+        if (providerInput) providerInput.value = s.llmProvider || 'openai';
+        if (openaiInput) openaiInput.placeholder = 'Already saved securely — leave blank to keep';
       }
     }).catch(() => {});
   }

@@ -1,4 +1,7 @@
 require('dotenv').config();
+const os = require('os');
+const path = require('path');
+process.env.OPENCLUELY_DATA_DIR = process.env.OPENCLUELY_DATA_DIR || path.join(os.tmpdir(), 'opencluely-speech-test');
 
 const speechService = require('../src/services/speech.service');
 

@@ -9,9 +9,9 @@
 - Long description: OpenCluely is a cross-platform Electron desktop application that overlays a small floating window on the user's screen during technical interviews. The overlay is excluded from screen capture by Zoom, Google Meet, Microsoft Teams, Discord, and OBS. The app accepts voice or screenshot input, sends it to Google Gemini for reasoning, and streams the answer back into the overlay word by word. It is a free MIT-licensed alternative to Cluely, Natively, Interview Coder, FinalRound AI, LockedIn AI, OffscreenAI, CodingVeil, Steal AI, and Ezzi. Architecture is model-agnostic by design; additional backends (OpenAI, Anthropic, local models) are planned.
 - URL: https://opencluely.techycsr.dev/
 - Repository: https://github.com/TechyCSR/OpenCluely
-- Author: TechyCSR
-- Author URL: https://techycsr.dev
-- Maintainer: TechyCSR
+- Author: Meshtech254
+- Author URL: https://github.com/Meshtech254
+- Maintainer: Meshtech254
 - License: MIT (https://opensource.org/licenses/MIT)
 - Created: 2025
 - Current version: 1.0.0
@@ -90,7 +90,7 @@
 - Releases: https://github.com/TechyCSR/OpenCluely/releases/latest
 - Releases feed (Atom): https://github.com/TechyCSR/OpenCluely/releases.atom
 - Issue tracker: https://github.com/TechyCSR/OpenCluely/issues
-- Developer: https://techycsr.dev
+- Developer: https://github.com/Meshtech254
 - License: https://opensource.org/licenses/MIT
 - sitemap: https://opencluely.techycsr.dev/sitemap.xml
 - robots: https://opencluely.techycsr.dev/robots.txt

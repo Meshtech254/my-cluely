@@ -1246,7 +1246,7 @@ class SpeechService extends EventEmitter {
   }
 
   _getWhisperModel() {
-    return this._getSetting('whisperModel') || process.env.WHISPER_MODEL || config.get('speech.whisper.model') || 'small';
+    return this._getSetting('whisperModel') || process.env.WHISPER_MODEL || config.get('speech.whisper.model') || 'base';
   }
 
   _getWhisperModelDir() {
@@ -1350,7 +1350,7 @@ class SpeechService extends EventEmitter {
   }
 
   _getWhisperDevice() {
-    return String(process.env.WHISPER_DEVICE || 'auto').trim().toLowerCase();
+    return String(process.env.WHISPER_DEVICE || 'cpu').trim().toLowerCase();
   }
 
   _getWhisperPythonPath() {
@@ -1561,7 +1561,9 @@ class SpeechService extends EventEmitter {
 
     const output = `${probe.stdout || ''}\n${probe.stderr || ''}`;
     const noModule = output.includes('No module named whisper');
-    const isHelpOutput = output.includes('usage:') || output.includes('whisper') || output.includes('options');
+    // Don't accept arbitrary Python error output: a missing whisper-script.py
+    // contains the word "whisper" but is not an installed transcription CLI.
+    const isHelpOutput = /usage:.*(?:whisper|transcribe)/i.test(output) && /--(?:model|task|language)\b/i.test(output);
 
     if (!probe.error && probe.status === 0 && !noModule) {
       return candidate;
@@ -1976,6 +1978,11 @@ class SpeechService extends EventEmitter {
       }
 
       return fs.readFileSync(transcriptPath, 'utf8').trim();
+    } catch (error) {
+      if (/ffmpeg|ffprobe/i.test(error.message || '')) {
+        throw new Error('FFmpeg is required by this Whisper command. Install FFmpeg and add it to PATH, or use the app-managed Whisper installation.');
+      }
+      throw error;
     } finally {
       this._removeTempDir(outputDir);
     }

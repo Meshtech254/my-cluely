@@ -31,8 +31,7 @@ class FirstRunManager {
     if (!fs.existsSync(this.sentinelPath)) return true;
     if (!fs.existsSync(this.envPath)) return true;
     const content = this._readEnv();
-    const gemini = (process.env.GEMINI_API_KEY || content.GEMINI_API_KEY || '').trim();
-    return !gemini || gemini === 'your_gemini_api_key_here';
+    return !this._hasConfiguredAIKey(content);
   }
 
   /**
@@ -80,15 +79,24 @@ class FirstRunManager {
   getStatus() {
     const env = this._readEnv();
     const gemini = (process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
+    const openai = (process.env.OPENAI_API_KEY || env.OPENAI_API_KEY || '').trim();
     return {
       envExists: fs.existsSync(this.envPath),
       sentinelExists: fs.existsSync(this.sentinelPath),
       geminiConfigured: !!gemini && gemini !== 'your_gemini_api_key_here',
+      openaiConfigured: !!openai && !/^your[-_].*[-_]here$/i.test(openai),
+      llmProvider: process.env.LLM_PROVIDER || env.LLM_PROVIDER || 'gemini',
       azureConfigured: !!(process.env.AZURE_SPEECH_KEY || env.AZURE_SPEECH_KEY || '').trim() &&
         !!(process.env.AZURE_SPEECH_REGION || env.AZURE_SPEECH_REGION || '').trim(),
       whisperConfigured: !!(env.WHISPER_COMMAND || '').trim(),
       needsOnboarding: this.needsOnboarding()
     };
+  }
+
+  _hasConfiguredAIKey(env = this._readEnv()) {
+    const gemini = (process.env.GEMINI_API_KEY || env.GEMINI_API_KEY || '').trim();
+    const openai = (process.env.OPENAI_API_KEY || env.OPENAI_API_KEY || '').trim();
+    return (!!gemini && !/^your[-_].*[-_]here$/i.test(gemini)) || (!!openai && !/^your[-_].*[-_]here$/i.test(openai));
   }
 
   _readEnv() {
@@ -154,9 +162,9 @@ class FirstRunManager {
       '# WHISPER_MODEL_DIR is optional. Leave it unset and the app stores model',
       '# weights in a stable app-data folder. Set an absolute path to override.',
       '# WHISPER_MODEL_DIR=',
-      'WHISPER_MODEL=small',
+      'WHISPER_MODEL=base',
       'WHISPER_LANGUAGE=auto',
-      'WHISPER_DEVICE=auto',
+      'WHISPER_DEVICE=cpu',
       'WHISPER_PYTHON=',
       'WHISPER_CAPTURE_MODE=vad',
       'WHISPER_RESPONSE_TARGET=both',

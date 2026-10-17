@@ -27,7 +27,7 @@ a strict BYOK model so the user keeps control of their API key and their data.
 - **Repository:** https://github.com/TechyCSR/OpenCluely
 - **License:** MIT - https://opensource.org/licenses/MIT
 - **Website:** https://opencluely.techycsr.dev/
-- **Author:** TechyCSR (https://techycsr.dev, https://github.com/TechyCSR)
+- **Author:** Meshtech254 (https://github.com/Meshtech254, https://github.com/Meshtech254)
 - **Platforms:** Windows (NSIS .exe installer), Linux (.deb, .AppImage), macOS (run from source via ./setup.sh)
 - **Tech stack:** Electron, Google Gemini API (Flash-Lite and Flash), OpenAI Whisper (local) and Azure Speech, PrismJS, WDA_EXCLUDEFROMCAPTURE / SetWindowDisplayAffinity (Windows), NSWindowSharingNone (macOS)
 - **Pricing:** Free, open source, MIT licensed. Only the user's own Gemini API usage costs (which has a generous free tier). No subscription, no account, no proxy.
@@ -96,7 +96,7 @@ or add Azure Speech credentials in Settings.
 - GitHub releases: https://github.com/TechyCSR/OpenCluely/releases/latest
 - Releases feed (Atom): https://github.com/TechyCSR/OpenCluely/releases.atom
 - Issue tracker: https://github.com/TechyCSR/OpenCluely/issues
-- Developer site: https://techycsr.dev
+- Developer site: https://github.com/Meshtech254
 - llms-full.txt: https://opencluely.techycsr.dev/llms-full.txt
 - sitemap: https://opencluely.techycsr.dev/sitemap.xml
 - robots: https://opencluely.techycsr.dev/robots.txt

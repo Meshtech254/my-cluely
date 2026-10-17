@@ -174,6 +174,15 @@
             border-color: rgba(255, 255, 255, 0.3);
         }
 
+        #translateScreen {
+            width: 18px;
+            height: 18px;
+            max-width: none;
+            padding: 0;
+            accent-color: #60a5fa;
+            cursor: pointer;
+        }
+
         /* Stealth scrollbar */
         ::-webkit-scrollbar {
             width: 2px;
@@ -318,8 +327,16 @@
                             <div class="settings-item-description">Choose your current focus area</div>
                         </div>
                         <select class="input-field" id="activeSkill">
-                            <option value="dsa">Data Structures & Algorithms</option>
+                            <option value="general">General Assistant</option>
+                            <option value="dsa">Data Structures &amp; Algorithms</option>
                         </select>
+                    </div>
+                    <div class="settings-item">
+                        <div>
+                            <div class="settings-item-label">Translate screen text to English</div>
+                            <div class="settings-item-description">Translate visible text from any language, explain it in English, and help solve the task.</div>
+                        </div>
+                        <input class="input-field" type="checkbox" id="translateScreen" aria-label="Translate screen text to English">
                     </div>
                 </div>
             </div>
@@ -398,7 +415,7 @@
                                 <div class="settings-item-label">Whisper Model</div>
                                 <div class="settings-item-description">Local model name used by the Whisper CLI</div>
                             </div>
-                            <input type="text" class="input-field" id="whisperModel" placeholder="small">
+                            <input type="text" class="input-field" id="whisperModel" placeholder="base">
                         </div>
                         <div class="settings-item">
                             <div>
@@ -410,7 +427,7 @@
                         <div class="settings-item">
                             <div>
                                 <div class="settings-item-label">Compute Device</div>
-                                <div class="settings-item-description">Automatically use CUDA when available, or force CPU/GPU</div>
+                                <div class="settings-item-description">CPU is the default; CUDA can be selected on compatible systems</div>
                             </div>
                             <select class="input-field" id="whisperDevice">
                                 <option value="auto">Auto</option>
@@ -460,9 +477,13 @@
             <div class="settings-section">
                 <div class="settings-section-title">
                     <i class="fas fa-robot"></i>
-                    Gemini Settings
+                    AI Provider
                 </div>
                 <div class="settings-section-content">
+                    <div class="settings-item">
+                        <div><div class="settings-item-label">Provider</div><div class="settings-item-description">Choose the AI service used for text, voice, and screenshot requests</div></div>
+                        <select class="input-field" id="llmProvider"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select>
+                    </div>
                     <div class="settings-item">
                         <div>
                             <div class="settings-item-label">Google API Key</div>
@@ -470,6 +491,9 @@
                         </div>
                         <input type="password" class="input-field" id="geminiKey" placeholder="Enter your Google API key">
                     </div>
+                    <div class="settings-item"><div><div class="settings-item-label">OpenAI API Key</div><div class="settings-item-description">Stored locally with Windows secure storage</div></div><input type="password" class="input-field" id="openaiKey" placeholder="Enter your OpenAI API key"></div>
+                    <div class="settings-item"><div><div class="settings-item-label">OpenAI Model</div></div><input type="text" class="input-field" id="openaiModel" placeholder="gpt-4o-mini"></div>
+                    <div class="settings-note">Credentials stay on this PC. Requests are sent directly to your selected AI provider. Leave saved keys blank to keep them.</div>
                 </div>
             </div>
             
@@ -488,8 +512,26 @@
                     </div>
                 </div>
             </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title"><i class="fas fa-book"></i> Knowledge</div>
+                <div class="settings-section-content">
+                    <div class="settings-note">Sources stay on this PC. Matching excerpts are sent to your selected AI provider with a question. Documents and website text are treated as untrusted reference material.</div>
+                    <div class="settings-item"><div><div class="settings-item-label">Knowledge mode</div></div><select class="input-field" id="knowledgeMode"><option value="automatic">Automatic</option><option value="always">Always use knowledge</option><option value="off">Off</option></select></div>
+                    <div class="settings-item"><label class="settings-item-label"><input id="prioritizeCv" type="checkbox"> Prioritize my CV</label></div>
+                    <div class="settings-item"><div><div class="settings-item-label">Maximum excerpts</div></div><input class="input-field" id="knowledgeMaxChunks" type="number" min="1" max="10" value="4"></div>
+                    <div class="settings-item"><div><div class="settings-item-label">Context size (characters)</div></div><input class="input-field" id="knowledgeMaxChars" type="number" min="1000" max="16000" step="1000" value="6000"></div>
+                    <div class="settings-item" style="justify-content:flex-start;gap:8px"><button class="btn" id="knowledgeAddFiles"><i class="fas fa-file-upload"></i> Add documents</button><button class="btn" id="knowledgeAddUrl"><i class="fas fa-link"></i> Add website</button></div>
+                    <div id="knowledgeStatus" class="settings-note" role="status"></div>
+                    <div id="knowledgeSources" class="settings-stack"></div>
+                </div>
+            </div>
         </div>
     </div>
+    <dialog id="knowledgeViewer" style="max-width:80vw;max-height:80vh;background:#191919;color:white;border:1px solid #555;border-radius:8px;padding:16px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px"><strong id="knowledgeViewerTitle"></strong><button class="btn" id="knowledgeViewerClose">Close</button></div>
+        <pre id="knowledgeViewerText" style="white-space:pre-wrap;max-height:65vh;overflow:auto;font:12px/1.5 sans-serif"></pre>
+    </dialog>
 
     <script src="./src/ui/settings-window.js"></script>
 </body>

@@ -58,7 +58,7 @@ class ConfigManager {
       },
 
       speech: {
-        provider: 'azure',
+        provider: process.env.SPEECH_PROVIDER || 'whisper',
         azure: {
           language: 'en-US',
           enableDictation: true,
@@ -66,7 +66,7 @@ class ConfigManager {
           outputFormat: 'detailed'
         },
         whisper: {
-          model: 'small',
+          model: process.env.WHISPER_MODEL || 'base',
           language: 'auto',
           // segmentMs is the legacy fixed-window size and now acts as the
           // hard upper bound for a single utterance when VAD is enabled.
