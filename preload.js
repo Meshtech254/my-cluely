@@ -10,6 +10,28 @@ const subscribe = (channel, callback) => {
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electronAPI', {
+  agentStatus: () => ipcRenderer.invoke('agent-status'),
+  agentExtensionStatus: () => ipcRenderer.invoke('agent-extension-status'),
+  agentExtensionInstall: id => ipcRenderer.invoke('agent-extension-install', id),
+  agentStart: options => ipcRenderer.invoke('agent-start', options),
+  agentPause: () => ipcRenderer.invoke('agent-pause'),
+  agentResume: () => ipcRenderer.invoke('agent-resume'),
+  agentStop: () => ipcRenderer.invoke('agent-stop'),
+  agentApprove: approved => ipcRenderer.invoke('agent-approve', approved),
+  agentSetAutoApprove: enabled => ipcRenderer.invoke('agent-auto-approve', enabled),
+  onAgentStatus: callback => subscribe('agent-status', callback),
+  monitoringSources: () => ipcRenderer.invoke('monitoring-sources'),
+  monitoringStatus: () => ipcRenderer.invoke('monitoring-status'),
+  monitoringRetryOcr: () => ipcRenderer.invoke('monitoring-retry-ocr'),
+  monitoringConfigure: options => ipcRenderer.invoke('monitoring-configure', options),
+  monitoringStart: id => ipcRenderer.invoke('monitoring-start', id),
+  monitoringPause: () => ipcRenderer.invoke('monitoring-pause'),
+  monitoringResume: () => ipcRenderer.invoke('monitoring-resume'),
+  monitoringStop: () => ipcRenderer.invoke('monitoring-stop'),
+  monitoringApprove: () => ipcRenderer.invoke('monitoring-approve'),
+  monitoringCancel: () => ipcRenderer.invoke('monitoring-cancel'),
+  monitoringAudio: enabled => ipcRenderer.invoke('monitoring-audio', enabled),
+  onMonitoringEvent: callback => subscribe('monitoring-event', callback),
   // Screenshot and OCR
   takeScreenshot: () => ipcRenderer.invoke('take-screenshot'),
   

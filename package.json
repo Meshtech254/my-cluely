@@ -8,6 +8,11 @@
     "dev": "node scripts/launch-electron.js --disable-gpu",
     "check:syntax": "node scripts/check-syntax.js",
     "test": "node test/run.js",
+    "test:ui": "node scripts/check-monitoring-ui.js",
+    "test:automation": "node test/automation-browser.test.js",
+    "test:desktop": "node test/automation-desktop.test.js",
+    "test:extension:ui": "node scripts/check-extension-ui.js",
+    "test:extension": "node test/extension-transport.test.js",
     "test-speech": "node scripts/test-speech.js",
     "build": "electron-builder",
     "build:mac": "electron-builder --mac",
@@ -38,6 +43,7 @@
     "marked": "^15.0.12",
     "microsoft-cognitiveservices-speech-sdk": "^1.40.0",
     "node-record-lpcm16": "^1.0.1",
+    "playwright": "^1.65.0",
     "prismjs": "^1.30.0",
     "winston": "^3.17.0",
     "winston-daily-rotate-file": "^4.7.1"
@@ -69,7 +75,10 @@
     "asarUnpack": [
       "assests/icons/**/*",
       "prompts/**/*",
-      "scripts/whisper_worker.py"
+      "scripts/whisper_worker.py",
+      "scripts/windows-ocr.ps1",
+      "scripts/windows-agent.ps1",
+      "scripts/extension-native-host.js"
     ],
     "mac": {
       "category": "public.app-category.utilities",

@@ -245,8 +245,13 @@ class MainWindowUI {
             const commandTab = document.querySelector('.command-tab');
             if (commandTab && window.electronAPI && window.electronAPI.resizeWindow) {
                 const rect = commandTab.getBoundingClientRect();
-                const width = Math.ceil(rect.width);
+                const livePanel = document.getElementById('monitoringPanel');
+                const liveRect = livePanel?.getBoundingClientRect();
+                const width = Math.ceil(Math.max(rect.width, liveRect?.width || 0));
                 let height = Math.ceil(rect.height);
+                if (liveRect) height = Math.max(height, Math.ceil(liveRect.bottom + 4));
+                const agentRect = document.getElementById('agentPanel')?.getBoundingClientRect();
+                if (agentRect) height = Math.max(height, Math.ceil(agentRect.bottom + 4));
 
                 // If shortcuts popover is visible, extend height to fit it
                 if (this.shortcutsPopover && this.shortcutsPopover.classList.contains('is-open')) {
@@ -690,15 +695,21 @@ class MainWindowUI {
         try {
             this._stopRendererAudioCapture();
 
+            const captureEpoch = this._audioCaptureEpoch;
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
+                    ...(window.liveAudioDeviceId ? { deviceId: { exact: window.liveAudioDeviceId } } : {}),
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
                     sampleRate: { ideal: 16000 }
                 }
             });
+            if (!this.isRecording || captureEpoch !== this._audioCaptureEpoch) {
+                stream.getTracks().forEach(track => track.stop()); return;
+            }
             this._mediaStream = stream;
+            stream.getAudioTracks()[0]?.addEventListener('ended', () => window.electronAPI.stopSpeechRecognition());
 
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({
                 sampleRate: 16000
@@ -746,6 +757,7 @@ class MainWindowUI {
     }
 
     _stopRendererAudioCapture() {
+        this._audioCaptureEpoch = (this._audioCaptureEpoch || 0) + 1;
         try {
             if (this._scriptNode) {
                 this._scriptNode.disconnect();

@@ -80,6 +80,7 @@ class WhisperWorkerService {
     this.readyInfo = null;
     this.closing = false;
     const child = spawn(this.pythonPath, ['-u', this.scriptPath], {
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true
     });

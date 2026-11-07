@@ -1,3 +1,10 @@
 require('./knowledge-base.test');
 require('./openai-stream.test');
 require('./general-assistant.test');
+require('./monitoring.test');
+require('./ocr.test');
+require('./automation.test');
+require('./automation-planner.test');
+require('./automation-request.test');
+require('./extension.test');
+require('./paced-desktop.test');

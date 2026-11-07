@@ -290,22 +290,7 @@ if (typeof window === 'undefined') {
         return Promise.resolve();
       }
     },
-    URL: class URL {
-      constructor(url) {
-        this.href = url;
-        this.protocol = 'https:';
-        this.host = 'localhost';
-        this.hostname = 'localhost';
-        this.port = '';
-        this.pathname = '/';
-        this.search = '';
-        this.hash = '';
-        this.origin = 'https://localhost';
-      }
-      toString() {
-        return this.href;
-      }
-    },
+    URL: require('node:url').URL,
     Blob: class Blob {
       constructor(parts = [], options = {}) {
         this.size = 0;
@@ -351,7 +336,7 @@ if (typeof window === 'undefined') {
   global.navigator = global.window.navigator;
   global.AudioContext = global.window.AudioContext;
   global.webkitAudioContext = global.window.webkitAudioContext;
-  global.URL = global.window.URL;
+  global.URL = global.URL || global.window.URL;
   global.Blob = global.window.Blob;
   global.File = global.window.File;
 
@@ -1139,7 +1124,8 @@ class SpeechService extends EventEmitter {
       const probe = spawnSync(
         this.whisperCommand.command,
         [...this.whisperCommand.baseArgs, '--help'],
-        { encoding: 'utf8', timeout: 10000 }
+        { encoding: 'utf8', timeout: 30000, windowsHide: true,
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' } }
       );
       if (probe.error || probe.status !== 0) {
         const err = probe.error ? probe.error.message : `exit code ${probe.status}`;
@@ -1496,6 +1482,7 @@ class SpeechService extends EventEmitter {
       // would be split at the space and the probe would wrongly fail —
       // hiding the mic for any user whose profile name contains a space.
       const probe = spawnSync(candidate.command, [...pyArgs, '-c', script], {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
         encoding: 'utf8',
         timeout: 8000,
         windowsHide: true,
@@ -1544,6 +1531,7 @@ class SpeechService extends EventEmitter {
     let probe;
     try {
       probe = spawnSync(cmd, args, {
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
         encoding: 'utf8',
         // First `import whisper` (torch/numba) can be slow on a cold cache.
         timeout: 30000,
@@ -1950,6 +1938,8 @@ class SpeechService extends EventEmitter {
     try {
       await new Promise((resolve, reject) => {
         const child = spawn(this.whisperCommand.command, args, {
+          env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' },
+          windowsHide: true,
           stdio: ['ignore', 'pipe', 'pipe']
         });
 

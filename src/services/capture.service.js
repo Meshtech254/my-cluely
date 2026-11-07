@@ -6,6 +6,22 @@ class CaptureService {
     this.isProcessing = false;
   }
 
+  async listSources() {
+    const sources = await desktopCapturer.getSources({ types: ['screen', 'window'], thumbnailSize: { width: 0, height: 0 } });
+    const { BrowserWindow } = require('electron');
+    const ownIds = new Set(BrowserWindow.getAllWindows().map(w => String(w.getMediaSourceId?.())));
+    return sources.filter(s => !ownIds.has(s.id)).map(s => ({ id: s.id, name: s.name, displayId: s.display_id }));
+  }
+
+  async captureSource(sourceId) {
+    if (typeof sourceId !== 'string' || !/^(screen|window):/.test(sourceId)) throw new Error('Invalid capture source');
+    const sources = await desktopCapturer.getSources({ types: [sourceId.startsWith('screen:') ? 'screen' : 'window'], thumbnailSize: { width: 1920, height: 1080 } });
+    const source = sources.find(s => s.id === sourceId);
+    if (!source || source.thumbnail.isEmpty()) throw new Error('Selected source disappeared or is unavailable. Select it again to resume.');
+    return { name: source.name, imageBuffer: source.thumbnail.toPNG(),
+      sample: source.thumbnail.resize({ width: 256, height: 144 }).toBitmap() };
+  }
+
   listDisplays() {
     try {
       const displays = screen.getAllDisplays().map(d => ({
@@ -79,10 +95,7 @@ class CaptureService {
 
     // Find source matching the target display by comparing sizes as heuristic
     let source = sources[0];
-    const match = sources.find(s => {
-      const size = s.thumbnail.getSize();
-      return size.width === width && size.height === height;
-    });
+    const match = sources.find(s => String(s.display_id) === String(targetDisplay.id));
     if (match) source = match;
 
     const image = source.thumbnail;

@@ -49,7 +49,7 @@ function runExec(cmd, args, { timeout = PROBE_TIMEOUT_MS, onProgress } = {}) {
     try {
       child = spawn(cmd, args, {
         windowsHide: true,
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUNBUFFERED: '1' },
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1', PYTHONUNBUFFERED: '1' },
       });
     } catch (e) {
       finish({ ok: false, error: e.message, stderr: e.message, stdout: '', code: null });

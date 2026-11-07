@@ -1,0 +1,15 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Local shopping fixture</title>
+<style>body{font:18px system-ui;margin:30px}article{padding:25px;border:1px solid #ccc;margin:20px 0}button,input{padding:14px;font:inherit}</style>
+<h1>Local test store</h1><label>Search products <input id="search"></label>
+<p id="cart" role="status">Cart: empty</p>
+<article><h2>Example headphones</h2><p>Price: 2500</p><button type="button" data-product="headphones">Add to cart</button></article>
+<article><h2>Example keyboard</h2><p>Price: 3000</p><button type="button" data-product="keyboard">Add to cart</button></article>
+<div style="height:1200px"></div><h2>Bottom of store</h2>
+<script>
+window.clicks = []; window.moves = [];
+document.addEventListener('mousemove', event => moves.push({ x: event.clientX, y: event.clientY, trusted: event.isTrusted }));
+document.querySelectorAll('button').forEach(button => button.onclick = event => {
+  clicks.push({ product: button.dataset.product, trusted: event.isTrusted });
+  document.getElementById('cart').textContent = 'Cart: ' + button.dataset.product;
+});
+</script></html>

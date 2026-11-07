@@ -1,7 +1,7 @@
 const path = require("path");
 const fs = require("fs");
 const { fileURLToPath } = require("url");
-const { app, BrowserWindow, globalShortcut, session, ipcMain } = require("electron");
+const { app, BrowserWindow, globalShortcut, session, ipcMain, powerMonitor } = require("electron");
 
 if (process.env.OPENCLUELY_DATA_DIR) {
   app.setPath('userData', path.resolve(process.env.OPENCLUELY_DATA_DIR));
@@ -126,6 +126,28 @@ class ApplicationController {
     this.speechAvailable = false;
     this.secretStore = null;
     this.knowledgeBase = new KnowledgeBase(app.getPath('userData'));
+    const AutomationService = require('./src/services/automation.service');
+    const { ExtensionBridge, ExtensionBrowser } = require('./src/services/extension-bridge');
+    this.extensionBridge = new ExtensionBridge({ dataDir: app.getPath('userData'), onDisconnect: () => {
+      if (this.automation?.options?.target === 'extension' && !['idle', 'completed', 'stopped', 'blocked'].includes(this.automation.state)) this.automation.stop('Browser tab permission revoked or extension disconnected');
+    } });
+    app.whenReady().then(() => this.extensionBridge.listen()).catch(() => this.automation.publish('Browser extension bridge could not start.'));
+    this.automation = new AutomationService({
+      planner: request => llmService.planAutomation(request), knowledge: this.knowledgeBase,
+      capture: captureService, displays: () => captureService.listDisplays().displays || [],
+      extensionFactory: options => new ExtensionBrowser(this.extensionBridge, options),
+      diagnostic: (event, details) => logger.info(event, details),
+      emit: state => windowManager.broadcastToAllWindows('agent-status', state)
+    });
+    const MonitoringService = require('./src/services/monitoring.service');
+    const OcrService = require('./src/services/ocr.service');
+    this.monitoring = new MonitoringService({
+      capture: captureService, ocr: new OcrService(),
+      emit: (type, data) => windowManager.broadcastToAllWindows('monitoring-event', { type, ...data }),
+      debug: stats => { if (process.env.DEBUG_MONITORING === 'true') logger.debug('Live monitoring resources', stats); },
+      answer: request => llmService.processLiveContext(request,
+        this.knowledgeBase.context(request.question, { includeCv: request.mode === 'interview' }).text)
+    });
 
     // Utterance coalescing: VAD emits a transcript per natural pause, but a
     // single spoken question can still arrive as a few fragments (mid-thought
@@ -286,6 +308,10 @@ class ApplicationController {
       const isFirstRun = status.needsOnboarding;
 
       await windowManager.initializeWindows({ showMainWindow: !isFirstRun });
+      const overlay = windowManager.getWindow('main');
+      const stopLiveCapture = () => { this.monitoring.shutdown(); speechService.stopRecording(); };
+      overlay?.webContents.on('render-process-gone', stopLiveCapture);
+      overlay?.on('closed', stopLiveCapture);
       this.setupGlobalShortcuts();
 
       // Initialize default stealth mode with terminal icon
@@ -409,6 +435,7 @@ class ApplicationController {
 
   setupGlobalShortcuts() {
     const shortcuts = {
+      'CommandOrControl+Alt+Shift+X': () => this.automation.stop('Emergency stop shortcut'),
       "CommandOrControl+Shift+S": () => this.triggerScreenshotOCR(),
       "CommandOrControl+Shift+V": () => windowManager.toggleVisibility(),
       "CommandOrControl+Shift+I": () => windowManager.toggleInteraction(),
@@ -431,17 +458,30 @@ class ApplicationController {
 
     Object.entries(shortcuts).forEach(([accelerator, handler]) => {
       const success = globalShortcut.register(accelerator, handler);
+      if (accelerator === 'CommandOrControl+Alt+Shift+X' && !success) {
+        this.automation.publish('Emergency stop shortcut unavailable. Use the Stop button.');
+      }
       logger.debug("Global shortcut registered", { accelerator, success });
     });
   }
 
   setupServiceEventHandlers() {
+    const pauseForSystem = () => {
+      this.automation.stop('Desktop locked or suspended');
+      if (!this.monitoring.options.pauseOnLock) return;
+      this.monitoring.pause('paused'); this.monitoring.setAudio(false); speechService.stopRecording();
+    };
+    app.whenReady().then(() => {
+      powerMonitor.on('lock-screen', pauseForSystem);
+      powerMonitor.on('suspend', pauseForSystem);
+    });
     speechService.on("recording-started", () => {
       windowManager.handleRecordingStarted();
     });
 
     speechService.on("recording-stopped", () => {
       windowManager.handleRecordingStopped();
+      if (this.monitoring.audio) this.monitoring.setAudio(false);
     });
 
     speechService.on("transcription", (text) => {
@@ -496,6 +536,43 @@ class ApplicationController {
     });
 
   handle("take-screenshot", () => this.triggerScreenshotOCR());
+  handle('agent-status', () => this.automation.status());
+  handle('agent-extension-status', () => this.extensionBridge.status());
+  handle('agent-extension-install', (_event, id) => this.extensionBridge.install(id));
+  handle('agent-start', (_event, options) => {
+    if (options?.target === 'extension') {
+      if (!this.extensionBridge.selection) throw new Error('Connect and allow a tab from the browser extension popup first');
+      const { navigationRequest } = require('./src/services/automation-policy');
+      const requested = navigationRequest(options.instruction, options.url);
+      return this.automation.start({ ...options, url: requested.url || this.extensionBridge.selection.url });
+    }
+    return this.automation.start(options);
+  });
+  handle('agent-pause', () => this.automation.pause());
+  handle('agent-resume', () => this.automation.resume());
+  handle('agent-stop', () => this.automation.stop());
+  handle('agent-approve', (_event, approved) => this.automation.approve(approved));
+  handle('agent-auto-approve', (_event, enabled) => this.automation.setAutoApprove(enabled));
+  handle('monitoring-sources', () => captureService.listSources());
+  handle('monitoring-status', () => this.monitoring.status());
+  handle('monitoring-retry-ocr', () => this.monitoring.retryOcr());
+  handle('monitoring-configure', (_event, options) => this.monitoring.configure(options));
+  handle('monitoring-start', (_event, id) => this.monitoring.start(id));
+  handle('monitoring-pause', () => this.monitoring.pause());
+  handle('monitoring-resume', () => this.monitoring.resume());
+  handle('monitoring-stop', () => this.monitoring.stop());
+  handle('monitoring-approve', () => this.monitoring.approve());
+  handle('monitoring-cancel', () => this.monitoring.dismiss());
+  handle('monitoring-audio', (_event, enabled) => {
+    clearTimeout(this._utteranceTimer); this._utteranceBuffer = '';
+    if (enabled) {
+      if (speechService.provider !== 'whisper') throw new Error('Select local Whisper in Settings for live audio.');
+      if (speechService.isManualCaptureMode()) throw new Error('Select VAD capture mode in Settings for continuous listening.');
+      this.monitoring.setAudio(true); speechService.startRecording();
+      if (!speechService.isRecording) { this.monitoring.setAudio(false); throw new Error('Whisper is not ready. Check speech settings.'); }
+    } else { this.monitoring.setAudio(false); speechService.stopRecording(); }
+    return this.monitoring.status();
+  });
   handle("list-displays", () => captureService.listDisplays());
   handle("capture-area", (event, options) => captureService.captureAndProcess(options));
     
@@ -516,6 +593,7 @@ class ApplicationController {
     });
 
     handle("start-speech-recognition", () => {
+      if (this.monitoring.audioManaged) { this.monitoring.setAudio(false); this.monitoring.audioManaged = false; }
       speechService.startRecording();
       return speechService.getStatus();
     });
@@ -536,6 +614,7 @@ class ApplicationController {
 
     // Also handle direct send events for fallback
     on("start-speech-recognition", () => {
+      if (this.monitoring.audioManaged) { this.monitoring.setAudio(false); this.monitoring.audioManaged = false; }
       speechService.startRecording();
     });
 
@@ -643,6 +722,8 @@ class ApplicationController {
     });
 
     handle("clear-session-memory", () => {
+      this.monitoring.clear();
+      clearTimeout(this._utteranceTimer); this._utteranceBuffer = '';
       sessionManager.clear();
       windowManager.broadcastToAllWindows("session-cleared");
       return { success: true };
@@ -1046,6 +1127,9 @@ class ApplicationController {
       return;
     }
     const currentStatus = speechService.getStatus();
+    if (!currentStatus.isRecording && this.monitoring.audioManaged) {
+      this.monitoring.setAudio(false); this.monitoring.audioManaged = false;
+    }
     if (currentStatus.isRecording) {
       try {
         speechService.stopRecording();
@@ -1323,6 +1407,10 @@ class ApplicationController {
    * line from producing two separate, slow answers.
    */
   handleTranscriptionFragment(text) {
+    if (this.monitoring.audioManaged) {
+      this.monitoring.transcript(text);
+      return;
+    }
     const fragment = (text || "").trim();
     if (!fragment) {
       return;
@@ -1650,6 +1738,10 @@ class ApplicationController {
   }
 
   onWillQuit() {
+    this.automation.stop('Application shutting down');
+    this.extensionBridge.close().catch(() => {});
+    this.monitoring.shutdown();
+    clearTimeout(this._utteranceTimer);
     globalShortcut.unregisterAll();
     speechService.shutdown();
     windowManager.destroyAllWindows();

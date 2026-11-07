@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "D:\\Projects\\cluely\\OpenCluely\\tmp\\url-debug\\logs\\.fb1a0c4570a24b1901a20d0befffee529a0877b7-audit.json",
+    "files": [
+        {
+            "date": 1794082808892,
+            "name": "D:\\Projects\\cluely\\OpenCluely\\tmp\\url-debug\\logs\\application-2026-11-07.log",
+            "hash": "d05c9b3ab0fd1b20ef211290399741f90185644a2ef73b33fb5eadc79b531544"
+        }
+    ],
+    "hashType": "sha256"
+}

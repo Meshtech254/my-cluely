@@ -16,6 +16,7 @@ async function main() {
   try {
     const connection = await speechService.testConnection();
     console.log('Connection test:', JSON.stringify(connection, null, 2));
+    if (!connection.success) process.exitCode = 1;
   } catch (error) {
     console.error('Connection test failed:', error.message);
     process.exitCode = 1;

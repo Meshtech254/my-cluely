@@ -45,4 +45,27 @@ test('maps screenshot image parts into OpenAI vision message format', () => {
   assert.equal(messages[1].content[1].image_url.url, 'data:image/png;base64,YWJj');
 });
 
+test('live interview requests stream CV-grounded multimodal context and accept cancellation', async () => {
+  const originalFetch = global.fetch;
+  const controller = new AbortController(); let calls = 0;
+  global.fetch = async (_url, options) => {
+    calls++;
+    const body = JSON.parse(options.body);
+    assert.match(body.messages[0].content, /Never invent work experience/);
+    assert.match(body.messages[0].content, /untrusted evidence/);
+    assert.match(body.messages[0].content, /local CV fact/);
+    assert.equal(body.messages[1].content[1].type, 'image_url');
+    assert.ok(options.signal);
+    return sseResponse('My supported experience');
+  };
+  try {
+    let streamed = '';
+    const request = { context: '{"question":"Tell me about your experience"}', image: Buffer.from('png'), mode: 'interview', signal: controller.signal, onDelta: d => { streamed += d; } };
+    const answer = await llm.processLiveContext(request, '[1] local CV fact');
+    assert.equal(answer, 'My supported experience'); assert.equal(streamed, answer);
+    controller.abort(); await assert.rejects(llm.processLiveContext(request), /abort/i);
+    assert.equal(calls, 1);
+  } finally { global.fetch = originalFetch; }
+});
+
 after(() => fs.rmSync(dataDir, { recursive: true, force: true }));

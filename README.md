@@ -104,6 +104,75 @@ If you would rather build from source, three steps are all it takes.
 
 ## Configuration
 
+### Optional live screen and audio copilot
+
+Expand **Live copilot** underneath the existing command bar (enable interaction with
+`Alt+A` if controls are click-through). Refresh sources, select one monitor or
+application window, and click **Start Monitoring**. Pause/Resume retains the
+selection; Stop releases screen context and cancels pending AI work. Existing
+manual screenshots and microphone controls remain available.
+
+- **Suggest Only** is the default. Detected questions appear locally; click
+  **Answer** to send context to the configured provider. **Auto Answer** enables
+  automatic requests. Choose Quick, Detailed or Interview responses.
+- Capture defaults to two seconds, with a configurable interval and AI cooldown.
+  Changed frames receive local OCR, then must remain stable for a second observation
+  before a question is suggested. Scrolling/typing may delay detection. This is a
+  heuristic detector, not a guarantee that every question or form will be recognized.
+- Windows 10/11 OCR uses the installed Windows OCR language packs through a hidden
+  PowerShell helper. It preserves line breaks, but complex tables, small text,
+  diagrams, equations and code indentation can be misread.
+  A failed scan retries automatically after 5–30 seconds even if the screen is
+  unchanged. **Retry local OCR** resets that delay. Timeouts, cancellation and
+  helper exit failures are reported separately; a timeout does not establish that
+  a Windows language pack is missing.
+  **Allow image fallback**
+  explicitly permits the latest changed screenshot to accompany relevant requests,
+  including graphical questions when OCR returns no text or is unavailable. The
+  fallback cannot identify graphical questions locally and may suggest a generic
+  task after any stable image change. No continuous video is uploaded.
+- **Start Audio Listening** requires the consent checkbox, local Whisper and VAD
+  capture mode in Settings. It runs independently of screen monitoring. Pause Audio
+  stops capture and discards queued transcripts. Completed fragments are combined
+  after a short pause; partial transcripts do not trigger requests. The existing
+  persistent Whisper worker and silence detector are reused.
+- Select an audio input from the device list. Windows system audio works through an
+  enabled loopback/Stereo Mix/virtual input exposed by the audio driver. Direct WASAPI
+  output-loopback capture is not implemented; many laptops expose microphone only.
+  Refresh sources after granting microphone access to see device labels.
+- Interview mode retrieves the existing uploaded CV/documents/website knowledge.
+  Upload sources in Settings; naming a resume with `CV` or `resume` helps retrieval.
+  Missing experience must be acknowledged instead of invented.
+- Captured frames remain in memory only (one current image); transcript and answer
+  history are bounded. **Clear session** cancels requests and clears live and existing
+  conversation memory. Monitoring and listening always start disabled on launch.
+- Auto Answer sends the detected question, recent screen text, authorized transcripts,
+  recent answers and relevant personal knowledge to your configured AI provider.
+  Local OCR/Whisper do not require uploading frames/audio. Enabling image fallback
+  also permits a current screenshot. Cancellation closes the request locally; data
+  already received by a provider cannot be recalled.
+- Window-title exclusions skip analysis when a selected window title matches.
+  They cannot redact sensitive applications inside a whole-display capture; choose
+  an application window for that use. Missing/minimized sources may suspend capture;
+  select an available source and Resume. Lock/sleep pauses both screen and audio by
+  default and requires explicit resumption.
+- Electron content protection excludes the overlay where Windows supports it;
+  capture behavior varies with Windows version and capture tools. Source images are
+  limited to 1920×1080; select a window for better small-text recognition. Other
+  platforms have no local OCR adapter and require explicit image fallback.
+
+Live updates never open or focus a window. Expand the panel to see streamed answers
+and the last ten answers. Set `DEBUG_MONITORING=true` to log process CPU counters and
+resident memory without logging captured text. No new npm dependencies are required.
+
+Run `npm test` and `npm run check:syntax` for deterministic regression checks.
+`npm run test:ui` runs a hidden Electron overlay test using synthetic screen/OCR/AI
+fixtures and the real preload bridge, without capturing your desktop or audio.
+The automated fixtures cover lifecycle, source loss, frame comparison, OCR failure,
+deduplication, speech coalescing, bounded context, streaming cancellation and offline
+behavior. Real multi-monitor/window capture, physical audio, lock events and extended
+Windows laptop performance still require an interactive device check.
+
 The setup script writes sensible defaults. The only required value is a Gemini API key.
 
 ```bash
@@ -239,3 +308,9 @@ Released under the Apache License 2.0. See [LICENSE](LICENSE) and [THIRD_PARTY_N
 Built by [Meshtech254](https://github.com/Meshtech254). If OpenCluely helped you, consider giving it a star ⭐
 
 </div>
+
+## Desktop agent
+
+The existing overlay now includes an opt-in desktop/browser agent with Assist, Guided and Auto modes, per-action approvals and an emergency stop. See [Windows automation setup, tests and limitations](AUTOMATION.md).
+
+For real Chrome/Edge tabs and visible character-by-character typing, [install the browser extension](browser-extension/README.md). PC tasks can switch approved windows and request opening Notepad, Calculator or File Explorer.
